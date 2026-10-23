@@ -1,0 +1,33 @@
+architecture: cnn
+
+data:
+  data_dir: data
+  train_csv: train.csv
+  val_fraction: 0.2
+  test_fraction: 0.2
+  batch_size: 64
+  num_workers: 2
+  split_seed: 42
+
+model:
+  conv_channels: [32, 64]
+  kernel_size: 3
+  activation: relu
+  dropout: 0.25
+  fc_hidden_dim: 128
+  num_classes: 10
+
+optim:
+  optimizer: adam
+  lr: 0.001
+  weight_decay: 0.0
+  label_smoothing: 0.0
+  lr_scheduler: null
+
+trainer:
+  max_epochs: 30
+  accelerator: auto
+  devices: 1
+  patience: 5
+  experiment_name: cnn_baseline
+  training_seed: 42

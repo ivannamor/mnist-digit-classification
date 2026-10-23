@@ -1,0 +1,32 @@
+# Winning configuration from the Optuna search run on Kaggle Notebooks
+# (2026-08-01, 20 trials, T4 GPU): best val_accuracy 0.9787, vs. the
+# baseline's 0.9719. See REPORT.md for the full run context.
+data:
+  data_dir: data
+  train_csv: train.csv
+  val_fraction: 0.2
+  test_fraction: 0.2
+  batch_size: 128
+  num_workers: 2
+  split_seed: 42
+
+model:
+  hidden_dims: [512, 256]
+  activation: gelu
+  dropout: 0.258885920517189
+  num_classes: 10
+
+optim:
+  optimizer: adamw
+  lr: 0.0009157770842261716
+  weight_decay: 0.00043489682497903484
+  label_smoothing: 0.1
+  lr_scheduler: null
+
+trainer:
+  max_epochs: 30
+  accelerator: auto
+  devices: 1
+  patience: 5
+  experiment_name: best_from_search
+  training_seed: 42

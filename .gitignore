@@ -1,0 +1,12 @@
+data/
+.env
+kaggle.json
+.kaggle_dataset_build/
+__pycache__/
+*.pyc
+outputs/
+lightning_logs/
+.ipynb_checkpoints/
+.venv/
+venv/
+.ruff_cache/

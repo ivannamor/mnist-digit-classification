@@ -1,0 +1,4 @@
+ruff
+nbformat
+nbconvert
+ipykernel

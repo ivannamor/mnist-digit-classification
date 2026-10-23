@@ -1,0 +1,13 @@
+torch
+torchvision
+pytorch-lightning
+torchmetrics
+optuna
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+pyyaml
+kaggle
+python-dotenv
