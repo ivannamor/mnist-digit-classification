@@ -1,5 +1,8 @@
 [tool.ruff]
 line-length = 120
+# Notebooks are exploration/run records (executed ones must match their saved
+# outputs), so linting covers src/, tests/ and scripts/ only.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "B", "UP", "PTH", "RUF"]
