@@ -39,7 +39,7 @@ The test set was evaluated exactly once per model, after each model's best confi
 
 ## Quickstart
 
-Requires Python 3.11+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU.
+Requires Python 3.12+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU.
 
 ```bash
 git clone https://github.com/ivannamor/mnist-digit-classification.git

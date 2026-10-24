@@ -19,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported (README says 3.11+) and a current one.
-        python-version: ["3.11", "3.12"]
+        # Oldest supported (README says 3.12+; numpy 2.5 requires it) and a newer one.
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
