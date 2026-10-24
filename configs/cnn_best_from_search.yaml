@@ -1,6 +1,8 @@
 # Winning CNN configuration from the Optuna search run on Kaggle Notebooks
-# (2026-08-01, 20 trials, T4 GPU): best val_accuracy 0.9922, test_accuracy
-# 0.9921. See REPORT.md for the full run context.
+# (2026-08-01, 20 trials, T4 GPU). Retrained from scratch, its best epoch (the
+# committed checkpoint) reached val_accuracy 0.9922 and test_accuracy 0.9921
+# -- the numbers the README reports. All accuracies are balanced (macro); see
+# the README. Full run context: REPORT.md.
 architecture: cnn
 
 data:

@@ -11,12 +11,20 @@ self-directed stretch goal, built and searched with the same rigor as the MLP.
 
 **Results at a glance:**
 
-| | Validation accuracy | Test accuracy | Test precision | Test recall |
+| | Validation accuracy (balanced) | Test accuracy (balanced) | Test precision | Test recall |
 |---|---|---|---|---|
 | MLP baseline | 97.19% | — | — | — |
 | **MLP, tuned** | 98.12% | **98.30%** | 98.29% | 98.30% |
 | CNN baseline (untuned) | 98.71% | — | — | — |
 | **CNN, tuned** | 99.22% | **99.21%** | 99.22% | 99.21% |
+
+All accuracies in this report that come from the training pipeline are **balanced
+accuracy**: torchmetrics' `MulticlassAccuracy` with macro averaging (its default,
+now set explicitly in `src/model.py`) averages the per-class accuracies, which is
+mathematically identical to macro recall, hence the matching columns. Plain accuracy
+(correct ÷ total) on the test set is 98.31% (MLP) and 99.23% (CNN); on these
+near-balanced classes the two differ by at most 0.02 points. The distribution-shift
+evaluation (section 6.2) reports plain accuracy.
 
 The CNN's *untuned* baseline (98.71%) already beats the MLP's *fully tuned* best
 (98.12%) — a direct illustration of architecture mattering more than hyperparameter
@@ -75,9 +83,10 @@ a measured conclusion, verified from the data, not a default assumption.
 
 **Why this matters:** a model trained on lopsided data can score high accuracy just by
 leaning on the majority class. Confirming balance up front is what justifies using
-plain accuracy as a trustworthy headline metric here — macro-averaged precision and
-recall are still reported throughout anyway, since that's the safer default regardless
-of what the balance check finds.
+accuracy as a trustworthy headline metric here. The accuracy the pipeline reports is
+in fact macro-averaged (balanced) accuracy, as are precision and recall, since that's
+the safer default regardless of what the balance check finds; with balanced classes it
+agrees with plain accuracy to within 0.02 points.
 
 A visual sanity check beyond the counts: one real sample image per digit class,
 straight from the raw pixel columns, confirming labels and pixel data genuinely
@@ -372,8 +381,8 @@ handwriting rather than a systematic model weakness.
 | | MLP (best) | CNN (best) |
 |---|---|---|
 | Parameters | 535,818 | 1,682,954 |
-| Validation accuracy | 98.12% | 99.22% |
-| **Test accuracy** | **98.30%** | **99.21%** |
+| Validation accuracy (balanced) | 98.12% | 99.22% |
+| **Test accuracy (balanced)** | **98.30%** | **99.21%** |
 | Test precision | 98.29% | 99.22% |
 | Test recall | 98.30% | 99.21% |
 | Test errors (of 8,400) | 142 | 66 |
@@ -419,7 +428,7 @@ to random init/shuffling alone" from split luck.
 
 ![Cross-seed variance](results/cross_seed_variance.png)
 
-| | Mean test accuracy | Std. dev. | Range | Original single-run result |
+| | Mean test accuracy (balanced) | Std. dev. | Range | Original single-run result |
 |---|---|---|---|---|
 | MLP | 98.199% | 0.061 pp | 98.127% – 98.282% | 98.300% |
 | CNN | 99.241% | 0.027 pp | 99.214% – 99.272% | 99.214% |
@@ -455,11 +464,17 @@ beyond MNIST's own narrow, curated distribution.
 | Rotate 15° | 95.46% | 98.10% |
 | Rotate 30° | 80.76% | 90.14% |
 | Translate 4px | **9.42%** | **21.24%** |
-| Noise σ=0.1 | 90.31% | 99.15% |
-| Noise σ=0.3 | 41.73% | 78.43% |
+| Noise σ=0.1 | 90.33% | 99.23% |
+| Noise σ=0.3 | 41.68% | 78.50% |
+
+These are plain accuracies (correct ÷ total), which is why "Clean" sits slightly above
+the balanced test accuracies elsewhere in this report. The noise perturbations are
+seeded (`run_shift_robustness(..., seed=0)`), so `python scripts/shift_robustness.py`
+regenerates this exact table and the plot from the committed checkpoints. An earlier,
+unseeded run of the same evaluation gave noise rows within 0.4 points of these.
 
 The CNN degrades more gracefully than the MLP under every perturbation tested — most
-dramatically for noise (σ=0.3: 78.43% vs. 41.73%). The translation row is the one
+dramatically for noise (σ=0.3: 78.50% vs. 41.68%). The translation row is the one
 that needs careful interpretation: a 4-pixel shift, barely perceptible to a human,
 collapses the MLP to **9.42% accuracy** — statistically indistinguishable from the
 10% expected by random guessing across 10 balanced classes, meaning the model has no

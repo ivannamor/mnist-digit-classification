@@ -1,6 +1,9 @@
 # Winning configuration from the Optuna search run on Kaggle Notebooks
-# (2026-08-01, 20 trials, T4 GPU): best val_accuracy 0.9787, vs. the
-# baseline's 0.9719. See REPORT.md for the full run context.
+# (2026-08-01, 20 trials, T4 GPU). The search's trial scored val_accuracy
+# 0.9787 (taken at its last epoch), vs. the baseline's 0.9719. Retrained from
+# scratch, its best epoch (the committed checkpoint) reached val_accuracy
+# 0.9812 and test_accuracy 0.9830 -- the numbers the README reports. All
+# accuracies are balanced (macro); see the README. Full run context: REPORT.md.
 data:
   data_dir: data
   train_csv: train.csv
