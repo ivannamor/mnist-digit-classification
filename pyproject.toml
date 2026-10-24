@@ -7,3 +7,5 @@ select = ["E", "W", "F", "B", "UP", "PTH", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Tests use num_workers=0 on purpose (tiny synthetic data); Lightning's hint about it is noise here.
+filterwarnings = ["ignore:The '.*_dataloader' does not have many workers:UserWarning"]
