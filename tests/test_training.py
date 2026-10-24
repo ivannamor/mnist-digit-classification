@@ -167,6 +167,34 @@ def test_shift_robustness_reports_every_perturbation(data_config):
     assert all(0.0 <= accuracy <= 1.0 for accuracy in results.values())
 
 
+class _PixelSumClassifier(torch.nn.Module):
+    """Stand-in model whose prediction depends on every pixel, so different
+    noise gives different accuracy. (An untrained network predicts one class
+    for everything, which would make seeded and unseeded noise look the same.)"""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        digit = (x.sum(dim=(1, 2, 3)) * 1000).long() % 10
+        return torch.nn.functional.one_hot(digit, num_classes=10).float()
+
+
+def test_shift_robustness_is_reproducible_and_leaves_global_rng_alone(data_config):
+    """The noise rows used to change on every run; the published table must be regenerable."""
+    data_module = MNISTDataModule(data_config)
+    data_module.setup()
+    model = _PixelSumClassifier()
+
+    torch.manual_seed(1)
+    first = run_shift_robustness(model, data_module.test_dataloader())
+    after_first = torch.rand(3)
+    torch.manual_seed(2)  # a different global state must not change the results
+    second = run_shift_robustness(model, data_module.test_dataloader())
+    torch.manual_seed(1)
+    expected_after = torch.rand(3)
+
+    assert first == second
+    assert torch.equal(after_first, expected_after), "run_shift_robustness consumed the caller's RNG"
+
+
 def test_cross_seed_trials_one_result_per_seed(data_config, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     results = run_cross_seed_trials(_tiny_config("mlp", data_config), training_seeds=[1, 2])

@@ -72,6 +72,8 @@ _PERTURBATIONS: dict[str, Callable[[torch.Tensor], torch.Tensor]] = {
 def _accuracy_under(
     model: BaseClassifier, dataloader: DataLoader, perturbation: Callable[[torch.Tensor], torch.Tensor]
 ) -> float:
+    """Plain accuracy (correct / total), unlike the models' logged macro
+    "accuracy" -- so the "clean" score differs from test_accuracy by ~0.01pp."""
     model.eval()
     correct = 0
     total = 0
@@ -83,12 +85,19 @@ def _accuracy_under(
     return correct / total
 
 
-def run_shift_robustness(model: BaseClassifier, dataloader: DataLoader) -> dict[str, float]:
+def run_shift_robustness(model: BaseClassifier, dataloader: DataLoader, seed: int = 0) -> dict[str, float]:
     """Evaluates an already-trained model on the clean test set and on each
     perturbed version -- no retraining, just measuring how far accuracy
     drops once the input no longer looks like MNIST's own curated data.
+
+    The noise perturbations draw random numbers, so each one runs from a fixed
+    `seed`: the same model and data always give the same table. Everything runs
+    inside fork_rng, which restores the caller's global RNG afterwards (even
+    iterating a DataLoader draws from it).
     """
-    results = {"clean": _accuracy_under(model, dataloader, lambda x: x)}
-    for name, perturbation in _PERTURBATIONS.items():
-        results[name] = _accuracy_under(model, dataloader, perturbation)
+    with torch.random.fork_rng(devices=[]):
+        results = {"clean": _accuracy_under(model, dataloader, lambda x: x)}
+        for name, perturbation in _PERTURBATIONS.items():
+            torch.manual_seed(seed)
+            results[name] = _accuracy_under(model, dataloader, perturbation)
     return results
