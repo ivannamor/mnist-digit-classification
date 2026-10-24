@@ -15,6 +15,7 @@ from src.data_module import _load_clean_and_split
 
 NUM_CLASSES = 10
 ROWS_PER_CLASS = 50
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def make_mnist_frame(rows_per_class: int = ROWS_PER_CLASS, seed: int = 0) -> pd.DataFrame:

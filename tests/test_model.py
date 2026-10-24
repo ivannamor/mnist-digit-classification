@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import pytorch_lightning as pl
 import torch
@@ -9,9 +7,9 @@ import torch
 from src.config import CNNModelConfig, ExperimentConfig, ModelConfig, OptimConfig
 from src.data_module import MNISTDataModule
 from src.model import _ACTIVATIONS, _OPTIMIZERS, CNNClassifier, MLPClassifier, build_model, load_model
+from tests.conftest import REPO_ROOT
 
 BATCH = 4
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _images(batch: int = BATCH) -> torch.Tensor:
