@@ -75,15 +75,34 @@ python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
 
 Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
 
+**Predict on your own image** (a photo, scan or drawing of a single digit; uses the tuned CNN by default):
+
+```bash
+python -m src.predict my_digit.png another.jpg
+```
+```
+my_digit.png: 9   (9: 95.4%, 1: 0.8%, 6: 0.7%)
+```
+
+Pass `--config`/`--checkpoint` to use the MLP instead. Probabilities top out around 90–95% rather than ~100% because both models were trained with label smoothing (0.1).
+
+A real image doesn't look like MNIST, and the [distribution-shift results](#distribution-shift-evaluation) show how little it takes to break the models. So `src/predict.py` first converts images the way MNIST itself was built: dark-on-light images are inverted, the digit is cropped and scaled to fit a 20×20 box (keeping its aspect ratio), and placed on a 28×28 canvas with its centre of mass at the centre. Measured on 1,000 real test digits redrawn as dark ink on a white 200×200 page at a random position:
+
+| | CNN | MLP |
+|---|---|---|
+| Original MNIST test images | 99.0% | 98.4% |
+| Photo-like page, **with** this preprocessing | 98.8% | 98.4% |
+| Photo-like page, naive resize + invert only | 29.4% | 14.8% |
+
 **Run the tests:**
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                       # full suite, ~30s on CPU
+pytest                       # full suite, ~40s on CPU
 pytest -m "not regression"   # skip the real-data check
 ```
 
-The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, and a short training run through each entry point. One extra regression test evaluates the committed checkpoints on the real data and checks they reproduce the results table above exactly; it runs only when `data/train.csv` is present and is skipped otherwise.
+The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, image preprocessing for prediction, and a short training run through each entry point. Extra regression tests evaluate the committed checkpoints on the real data, checking they reproduce the results table above exactly and still recognise photo-like images through `predict`; they run only when `data/train.csv` is present and are skipped otherwise.
 
 ## Data
 
@@ -169,6 +188,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `configs/cnn_baseline.yaml` / `configs/cnn_best_from_search.yaml` — the CNN configs.
 - `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
+- `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
 - `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
 
