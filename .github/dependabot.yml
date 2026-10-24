@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Python packages in requirements.txt / requirements-dev.txt
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      # torch and torchvision are released as matching pairs; bumping one
+      # without the other breaks the install, so update them in one PR.
+      pytorch:
+        patterns: ["torch", "torchvision"]
+      dev-tools:
+        patterns: ["ruff", "pytest", "nbformat", "nbconvert", "ipykernel"]
+
+  # Versions of the actions used in .github/workflows (checkout, setup-python)
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
