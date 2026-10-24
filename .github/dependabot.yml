@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python packages in requirements.txt / requirements-dev.txt
+  # Python packages in requirements.txt / requirements-dev.txt / requirements-demo.txt
   - package-ecosystem: pip
     directory: "/"
     schedule:

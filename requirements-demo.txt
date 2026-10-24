@@ -1,0 +1,3 @@
+# Only needed for the web demo (app.py); kept out of requirements.txt because
+# Gradio is large and training/evaluation don't use it.
+gradio==6.30.0
