@@ -35,6 +35,44 @@ The test set was evaluated exactly once per model, after each model's best confi
 
 ![CNN misclassified examples](results/cnn_misclassified_examples.png)
 
+## Quickstart
+
+Requires Python 3.10+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU.
+
+```bash
+git clone https://github.com/ivannamor/mnist-digit-classification.git
+cd mnist-digit-classification
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Kaggle data access** (one-time). The data is downloaded automatically on first run, which needs a Kaggle API token:
+
+1. Accept the rules of the [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer/rules) competition (otherwise the download returns 403).
+2. Create an API token under *Settings → API* on kaggle.com.
+3. `cp .env.example .env` and paste the token into `KAGGLE_API_TOKEN`.
+
+Alternatively, download `train.csv` manually from the competition page and place it at `data/train.csv` — no token needed.
+
+**Reproduce the headline result** from the included checkpoint (no training):
+
+```bash
+python -m src.evaluate --config configs/cnn_best_from_search.yaml --checkpoint results/cnn_best_from_search.ckpt --output-dir outputs/evaluation_cnn
+python -m src.evaluate --config configs/best_from_search.yaml     --checkpoint results/mlp_best_from_search.ckpt --output-dir outputs/evaluation_mlp
+```
+
+Each prints test accuracy/precision/recall (expected: CNN 99.21%, MLP 98.30%) and writes its confusion matrix and misclassified-examples plots to the given `--output-dir`.
+
+**Train from scratch, or rerun the hyperparameter search:**
+
+```bash
+python -m src.train  --config configs/cnn_best_from_search.yaml      # best checkpoint saved under outputs/logs/
+python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
+```
+
+Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
+
 ## Data
 
 Source: Kaggle's [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer) competition. Its `test.csv` has no labels (it exists for leaderboard submission only), so the full train/validation/test split (60/20/20, stratified) is built entirely from the 42,000-row `train.csv`.
