@@ -8,4 +8,7 @@ select = ["E", "W", "F", "B", "UP", "PTH", "RUF"]
 testpaths = ["tests"]
 pythonpath = ["."]
 # Tests use num_workers=0 on purpose (tiny synthetic data); Lightning's hint about it is noise here.
-filterwarnings = ["ignore:The '.*_dataloader' does not have many workers:UserWarning"]
+filterwarnings = [
+    "ignore:The '.*_dataloader' does not have many workers:UserWarning",
+    "ignore:The number of training batches .* is smaller than the logging interval:UserWarning",
+]
