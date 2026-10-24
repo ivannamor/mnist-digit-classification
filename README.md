@@ -171,3 +171,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
 - `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
+
+## License
+
+The code and the trained checkpoints in `results/` are released under the [MIT License](LICENSE). The MNIST data is not included in this repository: it is downloaded from Kaggle's [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer) competition and remains subject to that competition's terms.
