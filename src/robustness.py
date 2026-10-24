@@ -43,6 +43,7 @@ def run_cross_seed_trials(config: ExperimentConfig, training_seeds: list[int]) -
             callbacks=[EarlyStopping(monitor="val_loss", patience=trial_config.trainer.patience)],
             enable_progress_bar=False,
             logger=False,
+            enable_checkpointing=False,
         )
         trainer.fit(model, datamodule=data_module)
         val_accuracy = trainer.callback_metrics["val_accuracy"].item()
