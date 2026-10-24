@@ -1,5 +1,18 @@
 [tool.ruff]
 line-length = 120
+# Notebooks are exploration/run records (executed ones must match their saved
+# outputs), so linting covers src/, tests/ and scripts/ only.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "B", "UP", "PTH", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["regression: needs the real Kaggle data; checks committed checkpoints reproduce the README numbers"]
+# Tests use num_workers=0 on purpose (tiny synthetic data); Lightning's hint about it is noise here.
+filterwarnings = [
+    "ignore:The '.*_dataloader' does not have many workers:UserWarning",
+    "ignore:The number of training batches .* is smaller than the logging interval:UserWarning",
+]

@@ -1,5 +1,7 @@
 # MNIST Digit Classification — MLP, and a CNN Comparison
 
+[![CI](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml)
+
 A PyTorch Lightning pipeline for the Kaggle "Digit Recognizer" (MNIST) dataset, built for the Deep Learning Fundamentals project. Covers data cleaning, a stratified train/val/test split, a configurable MLP architecture, a systematic hyperparameter search, and a final held-out test evaluation. The required deliverable is the MLP; a CNN was added afterward as a stretch-goal comparison, built and searched the same rigorous way.
 
 ## Results
@@ -34,6 +36,54 @@ The test set was evaluated exactly once per model, after each model's best confi
 **Sample misclassified digits**: again, dominated by genuinely ambiguous handwriting rather than a systematic weakness.
 
 ![CNN misclassified examples](results/cnn_misclassified_examples.png)
+
+## Quickstart
+
+Requires Python 3.10+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU.
+
+```bash
+git clone https://github.com/ivannamor/mnist-digit-classification.git
+cd mnist-digit-classification
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Kaggle data access** (one-time). The data is downloaded automatically on first run, which needs a Kaggle API token:
+
+1. Accept the rules of the [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer/rules) competition (otherwise the download returns 403).
+2. Create an API token under *Settings → API* on kaggle.com.
+3. `cp .env.example .env` and paste the token into `KAGGLE_API_TOKEN`.
+
+Alternatively, download `train.csv` manually from the competition page and place it at `data/train.csv` — no token needed.
+
+**Reproduce the headline result** from the included checkpoint (no training):
+
+```bash
+python -m src.evaluate --config configs/cnn_best_from_search.yaml --checkpoint results/cnn_best_from_search.ckpt --output-dir outputs/evaluation_cnn
+python -m src.evaluate --config configs/best_from_search.yaml     --checkpoint results/mlp_best_from_search.ckpt --output-dir outputs/evaluation_mlp
+```
+
+Each prints test accuracy/precision/recall (expected: CNN 99.21%, MLP 98.30%) and writes its confusion matrix and misclassified-examples plots to the given `--output-dir`.
+
+**Train from scratch, or rerun the hyperparameter search:**
+
+```bash
+python -m src.train  --config configs/cnn_best_from_search.yaml      # best checkpoint saved under outputs/logs/
+python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
+```
+
+Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
+
+**Run the tests:**
+
+```bash
+pip install -r requirements-dev.txt
+pytest                       # full suite, ~30s on CPU
+pytest -m "not regression"   # skip the real-data check
+```
+
+The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, and a short training run through each entry point. One extra regression test evaluates the committed checkpoints on the real data and checks they reproduce the results table above exactly; it runs only when `data/train.csv` is present and is skipped otherwise.
 
 ## Data
 
@@ -120,3 +170,4 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
+- `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.

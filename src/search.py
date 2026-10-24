@@ -105,6 +105,7 @@ def objective(trial: optuna.Trial, base_config: ExperimentConfig) -> float:
         callbacks=[EarlyStopping(monitor="val_loss", patience=config.trainer.patience)],
         enable_progress_bar=False,
         logger=False,
+        enable_checkpointing=False,  # trials only report a score; Lightning would otherwise save one per trial
     )
     trainer.fit(model, datamodule=data_module)
     return trainer.callback_metrics["val_accuracy"].item()
