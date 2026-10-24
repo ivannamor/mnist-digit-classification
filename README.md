@@ -73,6 +73,16 @@ python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
 
 Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
 
+**Run the tests:**
+
+```bash
+pip install -r requirements-dev.txt
+pytest                       # full suite, ~30s on CPU
+pytest -m "not regression"   # skip the real-data check
+```
+
+The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, and a short training run through each entry point. One extra regression test evaluates the committed checkpoints on the real data and checks they reproduce the results table above exactly; it runs only when `data/train.csv` is present and is skipped otherwise.
+
 ## Data
 
 Source: Kaggle's [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer) competition. Its `test.csv` has no labels (it exists for leaderboard submission only), so the full train/validation/test split (60/20/20, stratified) is built entirely from the 42,000-row `train.csv`.
@@ -158,3 +168,4 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
+- `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
