@@ -1,13 +1,15 @@
-torch
-torchvision
-pytorch-lightning
-torchmetrics
-optuna
-scikit-learn
-pandas
-numpy
-matplotlib
-seaborn
-pyyaml
-kaggle
-python-dotenv
+# Pinned to the versions that passed the full test suite and reproduced the
+# README results exactly. Dependabot opens PRs to update them (tested by CI).
+torch==2.14.1
+torchvision==0.29.1
+pytorch-lightning==2.6.6
+torchmetrics==1.9.0
+optuna==5.0.0
+scikit-learn==1.9.1
+pandas==3.1.0
+numpy==2.5.4
+matplotlib==3.11.2
+seaborn==0.13.2
+pyyaml==6.0.3
+kaggle==2.2.5
+python-dotenv==1.2.4
