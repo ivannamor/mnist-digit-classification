@@ -1,5 +1,6 @@
-"""Regression test: the committed checkpoints, evaluated on the real Kaggle
-data, must still reproduce the test-set numbers published in the README.
+"""Regression tests: the committed checkpoints, evaluated on the real Kaggle
+data, must still reproduce the test-set numbers published in the README, and
+predict() must still recognise real digits redrawn as photo-like images.
 
 Needs data/train.csv, so it is skipped in CI and on fresh clones; run it
 locally after any change to data loading, cleaning, splitting or the model.
@@ -8,12 +9,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
 import pytest
 import pytorch_lightning as pl
+from PIL import Image
 
 from src.config import ExperimentConfig
 from src.data_module import MNISTDataModule
 from src.model import load_model
+from src.predict import predict
 from tests.conftest import REPO_ROOT
 
 DATA_DIR = REPO_ROOT / "data"
@@ -57,3 +61,28 @@ def test_committed_checkpoint_reproduces_readme_results(architecture):
     # pipeline changed behaviour or the README is out of date.
     for name in ("test_accuracy", "test_precision", "test_recall"):
         assert round(metrics[name] * 100, 2) == expected[name], name
+
+
+@pytest.mark.parametrize("architecture", list(README_RESULTS))
+def test_predict_handles_photo_like_images(architecture):
+    """Real test digits redrawn like a user's image (dark ink on white, 4x
+    larger, at a random spot on a 200x200 page) must still be recognised
+    through predict()'s preprocessing. Without it, accuracy on these images
+    is ~29% (CNN) / ~15% (MLP): the translation weakness from the robustness checks.
+    """
+    expected = README_RESULTS[architecture]
+    config = ExperimentConfig.from_yaml(REPO_ROOT / expected["config"])
+    data_module = MNISTDataModule(replace(config.data, data_dir=str(DATA_DIR), num_workers=0))
+    data_module.setup()
+    model = load_model(config, str(REPO_ROOT / expected["checkpoint"]))
+
+    rng = np.random.default_rng(0)
+    n = 1000
+    correct = 0
+    for pixels, label in zip(data_module.test_dataset.pixels[:n], data_module.test_dataset.labels[:n], strict=True):
+        digit = Image.fromarray((255 - pixels.reshape(28, 28)).astype(np.uint8)).resize((112, 112))
+        page = Image.new("L", (200, 200), "white")
+        page.paste(digit, tuple(int(v) for v in rng.integers(0, 200 - 112, size=2)))
+        correct += predict(model, page).argmax().item() == label
+
+    assert correct / n >= 0.98
