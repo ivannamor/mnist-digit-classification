@@ -4,6 +4,10 @@
 
 A PyTorch Lightning pipeline for the Kaggle "Digit Recognizer" (MNIST) dataset, built for the Deep Learning Fundamentals project. Covers data cleaning, a stratified train/val/test split, a configurable MLP architecture, a systematic hyperparameter search, and a final held-out test evaluation. The required deliverable is the MLP; a CNN was added afterward as a stretch-goal comparison, built and searched the same rigorous way.
 
+![Web demo: drawing digits and getting the CNN's live top-3 prediction](docs/demo.gif)
+
+*The web demo (`python app.py`, see [Try the demo](#quickstart)): draw a digit, and the tuned CNN predicts it live.*
+
 ## Results
 
 | | Validation accuracy | Test accuracy | Test precision | Test recall |
@@ -93,6 +97,15 @@ A real image doesn't look like MNIST, and the [distribution-shift results](#dist
 | Original MNIST test images | 99.0% | 98.4% |
 | Photo-like page, **with** this preprocessing | 98.8% | 98.4% |
 | Photo-like page, naive resize + invert only | 29.4% | 14.8% |
+
+**Try the demo** (the one in the GIF above):
+
+```bash
+pip install -r requirements-demo.txt
+python app.py                # then open http://127.0.0.1:7860
+```
+
+It's a small [Gradio](https://www.gradio.app/) app around the same `predict` function, so drawings go through exactly the preprocessing described above.
 
 **Run the tests:**
 
@@ -189,6 +202,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
+- `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
 - `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
 

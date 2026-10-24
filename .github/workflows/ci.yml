@@ -33,13 +33,15 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
-      # Versions come only from the requirements files. The extra index provides
-      # CPU-only torch builds (2.14.1+cpu outranks PyPI's 2.14.1, which bundles
-      # ~2.5 GB of CUDA that CI can't use); the assert catches a silent fallback.
+      # Versions come only from the requirements files; the demo ones are included
+      # so the app tests run and any pin that conflicts with Gradio fails here.
+      # The extra index provides CPU-only torch builds (2.14.1+cpu outranks PyPI's
+      # 2.14.1, which bundles ~2.5 GB of CUDA that CI can't use); the assert
+      # catches a silent fallback.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt -r requirements-demo.txt --extra-index-url https://download.pytorch.org/whl/cpu
           python -c "import torch; assert torch.version.cuda is None, 'CUDA build installed in CI'"
 
       - name: Lint
