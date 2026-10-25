@@ -90,6 +90,27 @@ def build_config(params: dict, base_config: ExperimentConfig) -> ExperimentConfi
     )
 
 
+class _PruningCallback(pl.Callback):
+    """Reports val_accuracy to Optuna after every validation epoch and stops
+    the trial once the pruner judges it clearly worse than earlier trials at
+    the same epoch. Without these reports the study's pruner has nothing to
+    compare and every trial runs to the end. (Optuna's own Lightning callback
+    lives in the separate optuna-integration package; this is the same idea.)
+    """
+
+    def __init__(self, trial: optuna.Trial, monitor: str = "val_accuracy"):
+        self.trial = trial
+        self.monitor = monitor
+
+    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if trainer.sanity_checking:  # Lightning's pre-training check of 2 val batches
+            return
+        epoch = trainer.current_epoch
+        self.trial.report(trainer.callback_metrics[self.monitor].item(), step=epoch)
+        if self.trial.should_prune():
+            raise optuna.TrialPruned(f"pruned after epoch {epoch}")
+
+
 def objective(trial: optuna.Trial, base_config: ExperimentConfig) -> float:
     sample_fn = _sample_cnn_params if base_config.architecture == "cnn" else _sample_mlp_params
     config = build_config(sample_fn(trial), base_config)
@@ -102,13 +123,23 @@ def objective(trial: optuna.Trial, base_config: ExperimentConfig) -> float:
         max_epochs=config.trainer.max_epochs,
         accelerator=config.trainer.accelerator,
         devices=config.trainer.devices,
-        callbacks=[EarlyStopping(monitor="val_loss", patience=config.trainer.patience)],
+        callbacks=[
+            EarlyStopping(monitor="val_loss", patience=config.trainer.patience),
+            _PruningCallback(trial),
+        ],
         enable_progress_bar=False,
         logger=False,
         enable_checkpointing=False,  # trials only report a score; Lightning would otherwise save one per trial
     )
     trainer.fit(model, datamodule=data_module)
     return trainer.callback_metrics["val_accuracy"].item()
+
+
+def create_study() -> optuna.Study:
+    # A trial can only be pruned after 5 complete trials exist to compare
+    # against, and not during its first 3 epochs, when scores are still noisy.
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
+    return optuna.create_study(direction="maximize", pruner=pruner)
 
 
 def main() -> None:
@@ -118,7 +149,7 @@ def main() -> None:
     args = parser.parse_args()
 
     base_config = ExperimentConfig.from_yaml(args.config)
-    study = optuna.create_study(direction="maximize", pruner=optuna.pruners.MedianPruner())
+    study = create_study()
     study.optimize(lambda trial: objective(trial, base_config), n_trials=args.n_trials)
 
     print("Best value:", study.best_value)

@@ -534,7 +534,9 @@ reports intermediate per-epoch metrics back to Optuna mid-training, which is wha
 pruner needs to decide whether to cut a bad trial short. Every trial therefore runs to
 its own early-stopping point regardless of how it's doing relative to others so far.
 Left as a concrete "further improvement" rather than silently left looking more
-finished than it is.
+finished than it is. *Fixed since:* a small Lightning callback in `src/search.py` now
+reports validation accuracy each epoch and raises `optuna.TrialPruned` when the pruner
+says so; the searches in this report ran before that change.
 
 **Downloading results off Kaggle needed a workaround.** The standard Jupyter download
 mechanism (`IPython.display.FileLink`) returned 404s on Kaggle's hosted environment.
@@ -595,10 +597,9 @@ exact equality checks, not just matching shapes.
 
 ## 9. Suggestions for further improvement
 
-- **A real pruning callback for the Optuna search.** Both searches configure
-  `MedianPruner`, but trials don't report intermediate metrics back to Optuna, so it
-  can't currently cut a clearly-bad trial short. Wiring in per-epoch reporting would
-  make a larger search (more trials, wider ranges) more efficient.
+- ~~**A real pruning callback for the Optuna search.**~~ *Done since:* trials now report
+  validation accuracy every epoch, so `MedianPruner` can stop clearly-bad trials early
+  (see Section 7).
 - **Data augmentation** (small rotations/shifts/translations during training) — no
   longer just a theoretical suggestion: Section 6.2 shows both models collapse under a
   4-pixel translation they were never trained to handle (MLP to chance level, CNN to
@@ -643,8 +644,7 @@ reading of the requirement could expect more loss-function diversity.
 
 ## 11. Limitations and future work
 
-- **The Optuna pruner doesn't actually prune** — the most concrete next step, and the
-  one most directly tied to search efficiency at scale.
+- ~~**The Optuna pruner doesn't actually prune**~~ — *done since* (Section 7).
 - **CNN search only varied 2-layer channel widths**, not depth.
 - **No data augmentation** — Section 6.2 turned this from a theoretical suggestion
   into a demonstrated gap: both models collapse under a 4px translation they were
