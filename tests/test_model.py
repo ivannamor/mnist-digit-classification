@@ -70,6 +70,20 @@ def test_label_smoothing_reaches_loss():
     assert model.loss_fn.label_smoothing == 0.1
 
 
+def test_reported_accuracy_is_balanced_accuracy():
+    """The README labels "accuracy" as balanced (macro) accuracy; this pins that
+    meaning. On imbalanced predictions it must equal macro recall, not correct/total."""
+    model = build_model(_config("mlp"))
+    target = torch.tensor([0] * 8 + [1] * 2)
+    preds = torch.tensor([0] * 8 + [0, 1])  # class 0: 8/8 right, class 1: 1/2 right
+    accuracy = model.test_accuracy(preds, target)
+    recall = model.test_recall(preds, target)
+
+    assert accuracy == pytest.approx((1.0 + 0.5) / 2)  # balanced: 0.75
+    assert accuracy != pytest.approx(9 / 10)  # plain accuracy would be 0.9
+    assert accuracy == pytest.approx(recall.item())
+
+
 # --- Checkpoints ------------------------------------------------------------
 
 

@@ -1,6 +1,7 @@
 """Regression tests: the committed checkpoints, evaluated on the real Kaggle
-data, must still reproduce the test-set numbers published in the README, and
-predict() must still recognise real digits redrawn as photo-like images.
+data, must still reproduce the numbers published in the README (the results
+table and the seeded distribution-shift table), and predict() must still
+recognise real digits redrawn as photo-like images.
 
 Needs data/train.csv, so it is skipped in CI and on fresh clones; run it
 locally after any change to data loading, cleaning, splitting or the model.
@@ -18,6 +19,7 @@ from src.config import ExperimentConfig
 from src.data_module import MNISTDataModule
 from src.model import load_model
 from src.predict import predict
+from src.robustness import run_shift_robustness
 from tests.conftest import REPO_ROOT
 
 DATA_DIR = REPO_ROOT / "data"
@@ -86,3 +88,25 @@ def test_predict_handles_photo_like_images(architecture):
         correct += predict(model, page).argmax().item() == label
 
     assert correct / n >= 0.98
+
+
+# Exactly as published in the README's distribution-shift table (plain accuracy, %).
+README_SHIFT_RESULTS = {
+    "mlp": {"clean": 98.31, "rotate_15deg": 95.46, "rotate_30deg": 80.76, "translate_4px": 9.42,
+            "noise_sigma0.1": 90.33, "noise_sigma0.3": 41.68},
+    "cnn": {"clean": 99.23, "rotate_15deg": 98.10, "rotate_30deg": 90.14, "translate_4px": 21.24,
+            "noise_sigma0.1": 99.23, "noise_sigma0.3": 78.50},
+}
+
+
+@pytest.mark.parametrize("architecture", list(README_SHIFT_RESULTS))
+def test_shift_robustness_reproduces_readme_table(architecture):
+    expected = README_RESULTS[architecture]
+    config = ExperimentConfig.from_yaml(REPO_ROOT / expected["config"])
+    data_module = MNISTDataModule(replace(config.data, data_dir=str(DATA_DIR), num_workers=0))
+    data_module.setup()
+    model = load_model(config, str(REPO_ROOT / expected["checkpoint"]))
+
+    results = run_shift_robustness(model, data_module.test_dataloader())
+
+    assert {name: round(value * 100, 2) for name, value in results.items()} == README_SHIFT_RESULTS[architecture]

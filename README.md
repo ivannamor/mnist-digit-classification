@@ -10,12 +10,16 @@ A PyTorch Lightning pipeline for the Kaggle "Digit Recognizer" (MNIST) dataset, 
 
 ## Results
 
-| | Validation accuracy | Test accuracy | Test precision | Test recall |
+| | Validation accuracy (balanced) | Test accuracy (balanced) | Test precision | Test recall |
 |---|---|---|---|---|
 | MLP baseline (`configs/baseline.yaml`) | 97.19% | — | — | — |
 | **MLP best** (Optuna search, `configs/best_from_search.yaml`) | 98.12% | 98.30% | 98.29% | 98.30% |
 | CNN baseline (`configs/cnn_baseline.yaml`) | 98.71% | — | — | — |
 | **CNN best** (Optuna search, `configs/cnn_best_from_search.yaml`) | 99.22% | **99.21%** | 99.22% | 99.21% |
+
+How to read these numbers:
+- **Accuracy here is balanced accuracy**: torchmetrics' `MulticlassAccuracy` with macro averaging computes the accuracy of each digit class and averages the ten. That is mathematically the same as macro recall, which is why those two columns match. Plain accuracy (correct ÷ total) on the test set is 98.31% (MLP) and 99.23% (CNN); with near-balanced classes the two differ by at most 0.02 points. All precision and recall values are macro-averaged too.
+- **Validation is measured on the committed checkpoints**: each is the best epoch of a fresh retrain of the winning configuration. The search's own trial for that configuration reported a lower validation score (97.87% for the MLP) because a trial's score is taken at its *last* epoch, not its best; for the CNN both are 99.22%.
 
 The CNN's *un-tuned baseline* (98.71%) already beats the MLP's *fully tuned best* (98.12%) — a direct illustration of why architecture matters more than hyperparameter tuning here. The fully-tuned CNN roughly halves the MLP's error rate (1.70% → 0.79% of test digits misclassified).
 
@@ -90,7 +94,7 @@ my_digit.png: 9   (9: 95.4%, 1: 0.8%, 6: 0.7%)
 
 Pass `--config`/`--checkpoint` to use the MLP instead. Probabilities top out around 90–95% rather than ~100% because both models were trained with label smoothing (0.1).
 
-A real image doesn't look like MNIST, and the [distribution-shift results](#distribution-shift-evaluation) show how little it takes to break the models. So `src/predict.py` first converts images the way MNIST itself was built: dark-on-light images are inverted, the digit is cropped and scaled to fit a 20×20 box (keeping its aspect ratio), and placed on a 28×28 canvas with its centre of mass at the centre. Measured on 1,000 real test digits redrawn as dark ink on a white 200×200 page at a random position:
+A real image doesn't look like MNIST, and the [distribution-shift results](#distribution-shift-evaluation) show how little it takes to break the models. So `src/predict.py` first converts images the way MNIST itself was built: dark-on-light images are inverted, the digit is cropped and scaled to fit a 20×20 box (keeping its aspect ratio), and placed on a 28×28 canvas with its centre of mass at the centre. Measured (plain accuracy) on the first 1,000 real test digits, redrawn as dark ink on a white 200×200 page at a random position:
 
 | | CNN | MLP |
 |---|---|---|
@@ -111,8 +115,8 @@ It's a small [Gradio](https://www.gradio.app/) app around the same `predict` fun
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                       # full suite, ~40s on CPU
-pytest -m "not regression"   # skip the real-data check
+pytest                       # full suite, ~1 min on CPU with the real data
+pytest -m "not regression"   # skip the real-data checks, ~30s
 ```
 
 The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, image preprocessing for prediction, and a short training run through each entry point. Extra regression tests evaluate the committed checkpoints on the real data, checking they reproduce the results table above exactly and still recognise photo-like images through `predict`; they run only when `data/train.csv` is present and are skipped otherwise.
@@ -140,7 +144,7 @@ Pixel intensities are heavily bimodal — mostly-black backgrounds vastly outnum
 - **Stratified splitting** (`sklearn.train_test_split`, `stratify=y`, twice — train vs. rest, then val vs. test) — preserves class balance across all three partitions.
 - **Fixed random seeds** (`pl.seed_everything`, plus a fixed split seed) — so differences between experiments reflect the hyperparameters (or architecture) being compared, not split/init noise.
 - **`torchmetrics`** for accuracy/precision/recall/confusion matrix — computed natively inside Lightning's `validation_step`/`test_step`, avoiding hand-rolled metric bookkeeping.
-- **Macro-averaged precision/recall**, not just accuracy — accuracy alone can be misleading under class imbalance. This dataset turned out to be balanced (verified, not assumed), but computing macro metrics regardless is the more defensible default.
+- **Macro-averaged metrics** (accuracy, precision, recall) — plain accuracy alone can be misleading under class imbalance, while macro averaging weights every digit class equally. This dataset turned out to be balanced (verified, not assumed), but macro metrics are the more defensible default. The averaging is set explicitly in `src/model.py` rather than relying on torchmetrics' default.
 - **Cached data loading** (`functools.cache` on the load-clean-split step, keyed on the parameters that actually affect the result). `setup()` was getting called ~54 times across this project's baseline/search/retrain/cross-seed runs, most of them within the same process — measured locally, a cold load took 4.65s, a cached one ~0s, with array-identical results.
 
 ### The winning configurations, and what they say
@@ -161,7 +165,7 @@ Both winning configs were retrained 5 times each with different random initializ
 
 ![Cross-seed variance](results/cross_seed_variance.png)
 
-| | Mean test accuracy | Std dev | Range |
+| | Mean test accuracy (balanced) | Std dev | Range |
 |---|---|---|---|
 | MLP | 98.199% | 0.061pp | 98.127% – 98.282% |
 | CNN | 99.241% | 0.027pp | 99.214% – 99.272% |
@@ -180,10 +184,12 @@ The already-trained models (no retraining) were evaluated on perturbed versions 
 | Rotate 15° | 95.46% | 98.10% |
 | Rotate 30° | 80.76% | 90.14% |
 | Translate 4px | **9.42%** | **21.24%** |
-| Noise σ=0.1 | 90.31% | 99.15% |
-| Noise σ=0.3 | 41.73% | 78.43% |
+| Noise σ=0.1 | 90.33% | 99.23% |
+| Noise σ=0.3 | 41.68% | 78.50% |
 
-The CNN degrades more gracefully than the MLP under every perturbation, most dramatically for noise (σ=0.3: 78.43% vs. 41.73%). But the translation result is the important one to interpret carefully: a 4-pixel shift collapses the MLP to *chance level* (9.4%, vs. 10% expected from random guessing across 10 balanced classes), and the CNN — while clearly better — still falls to 21.2%, nowhere near usable. **This is not evidence that CNNs are translation-invariant and MLPs aren't** — a plain CNN's translation robustness comes only from local pooling within its conv layers; the flatten+FC head at the end has the same fixed-position assumption as the MLP does everywhere. Neither model was ever trained on shifted examples, so neither can be expected to handle a transformation it never saw — this is direct empirical support for the data-augmentation suggestion below, not a property either architecture gets for free.
+These are plain accuracies (correct ÷ total), so "Clean" is slightly above the balanced test accuracy in the results table. The noise is seeded, so `python scripts/shift_robustness.py` regenerates this exact table and plot from the committed checkpoints.
+
+The CNN degrades more gracefully than the MLP under every perturbation, most dramatically for noise (σ=0.3: 78.50% vs. 41.68%). But the translation result is the important one to interpret carefully: a 4-pixel shift collapses the MLP to *chance level* (9.4%, vs. 10% expected from random guessing across 10 balanced classes), and the CNN — while clearly better — still falls to 21.2%, nowhere near usable. **This is not evidence that CNNs are translation-invariant and MLPs aren't** — a plain CNN's translation robustness comes only from local pooling within its conv layers; the flatten+FC head at the end has the same fixed-position assumption as the MLP does everywhere. Neither model was ever trained on shifted examples, so neither can be expected to handle a transformation it never saw — this is direct empirical support for the data-augmentation suggestion below, not a property either architecture gets for free.
 
 ## Suggestions for further improvement
 
@@ -204,6 +210,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
 - `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
+- `scripts/shift_robustness.py` — regenerates the distribution-shift table and `results/shift_robustness.png` from the committed checkpoints (needs the real data).
 - `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
 
 ## License

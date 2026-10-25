@@ -34,10 +34,14 @@ class BaseClassifier(pl.LightningModule):
         self.loss_fn = nn.CrossEntropyLoss(label_smoothing=optim_config.label_smoothing)
 
         num_classes = model_config.num_classes
-        self.val_accuracy = MulticlassAccuracy(num_classes=num_classes)
+        # average="macro" (torchmetrics' default, made explicit so a changed
+        # default can't silently change the metric): per-class accuracy averaged
+        # over the classes, i.e. balanced accuracy, identical to macro recall.
+        # All reported "accuracy" numbers use this, not correct/total.
+        self.val_accuracy = MulticlassAccuracy(num_classes=num_classes, average="macro")
         self.val_precision = MulticlassPrecision(num_classes=num_classes, average="macro")
         self.val_recall = MulticlassRecall(num_classes=num_classes, average="macro")
-        self.test_accuracy = MulticlassAccuracy(num_classes=num_classes)
+        self.test_accuracy = MulticlassAccuracy(num_classes=num_classes, average="macro")
         self.test_precision = MulticlassPrecision(num_classes=num_classes, average="macro")
         self.test_recall = MulticlassRecall(num_classes=num_classes, average="macro")
         self.test_confusion_matrix = MulticlassConfusionMatrix(num_classes=num_classes)
