@@ -8,6 +8,9 @@ learning rates, dropout ratios, hidden-layer architectures, and loss functions,
 evaluate the best configuration once on held-out test data, and propose further
 improvements. A convolutional neural network (CNN) was added afterward as a
 self-directed stretch goal, built and searched with the same rigor as the MLP.
+Sections 1–11 are the project as delivered for the course; Section 12 covers the work
+done afterwards (tests, CI, prediction on real-world images, a web demo, a data
+augmentation experiment, and the corrections those uncovered).
 
 **Results at a glance:**
 
@@ -28,8 +31,8 @@ evaluation (section 6.2) reports plain accuracy.
 
 The CNN's *untuned* baseline (98.71%) already beats the MLP's *fully tuned* best
 (98.12%) — a direct illustration of architecture mattering more than hyperparameter
-tuning for this problem. The tuned CNN roughly halves the MLP's error rate (1.70% →
-0.79% of test digits misclassified).
+tuning for this problem. The tuned CNN roughly halves the MLP's error rate (142 → 65
+of the 8,400 test digits misclassified, 1.69% → 0.77%).
 
 Validation accuracy is measured on data that was never trained on, but which *was*
 used to choose the best hyperparameters — so it runs slightly optimistic. Test
@@ -211,8 +214,11 @@ Search-reported validation accuracy: **0.9787**.
 
 ### 3.4 Retraining and final evaluation
 
-The search itself saves no checkpoints (only hyperparameters), so the winning
-configuration was retrained from scratch with checkpointing on. This run trained the
+The search's checkpoints aren't used (only its hyperparameters are), so the winning
+configuration was retrained from scratch with checkpointing on. (The search was meant
+to save no checkpoints at all, but Lightning's default checkpointing was still on and
+silently wrote one per trial; found later by the test suite and fixed, see Section
+12.2. Results are unaffected: those files were never read.) This run trained the
 full 30 epochs without early stopping — consistent with three regularizers acting
 together (dropout + weight decay + label smoothing) slowing convergence in exchange
 for better generalization. The checkpoint captures the *best* epoch across training:
@@ -252,7 +258,8 @@ predicted):
 | **8** | 2 | 2 | 3 | 2 | 2 | 3 | 3 | 2 | 794 | 0 | 97.66% |
 | **9** | 2 | 2 | 0 | 3 | 3 | 4 | 0 | 6 | 4 | 813 | 97.13% |
 
-8,258 / 8,400 correct = 98.30%.
+8,258 / 8,400 correct = 98.31% plain accuracy (98.30% balanced, the figure reported
+elsewhere).
 
 **Largest confusions**: 3→5 (8 cases) and 5→3 (7 cases) — a 3/5 confusion pair
 accounting for 15 of 142 total errors (10.6%), the dominant error pattern. Both digits
@@ -385,12 +392,15 @@ handwriting rather than a systematic model weakness.
 | **Test accuracy (balanced)** | **98.30%** | **99.21%** |
 | Test precision | 98.29% | 99.22% |
 | Test recall | 98.30% | 99.21% |
-| Test errors (of 8,400) | 142 | 66 |
+| Test errors (of 8,400) | 142 | 65 |
+| Test loss (both with label smoothing 0.1) | 0.555 | 0.531 |
 
 Both models were evaluated on the identical stratified test split (same seed, same
 8,400 rows), so this comparison is apples-to-apples. **The CNN roughly halves the
-MLP's error rate** (142 → 66 errors, a 53.5% relative reduction), with a search
-process equally rigorous to the MLP's.
+MLP's error rate** (142 → 65 errors, a 54.2% relative reduction), with a search
+process equally rigorous to the MLP's. Since both winners use the same label
+smoothing, their test losses are directly comparable too, unlike the within-model
+baseline-vs-search comparisons (where label smoothing differs).
 
 **Where the CNN's advantage concentrates**: comparing the two confusion matrices
 directly, the MLP's dominant error pattern — 3↔5 confusion (15 total cases) — is
@@ -490,7 +500,8 @@ Neither model was ever trained on shifted examples, so this result demonstrates 
 general and well-established principle — a model does not generalize to a class of
 transformation it was never trained to handle, regardless of architecture — rather
 than an architecture-specific weakness or strength. It is direct empirical support for
-adding data augmentation (Section 9), the standard fix for exactly this gap.
+adding data augmentation, the standard fix for exactly this gap, which was later done:
+see Section 12.4.
 
 ---
 
@@ -600,12 +611,16 @@ exact equality checks, not just matching shapes.
 - ~~**A real pruning callback for the Optuna search.**~~ *Done since:* trials now report
   validation accuracy every epoch, so `MedianPruner` can stop clearly-bad trials early
   (see Section 7).
-- **Data augmentation** (small rotations/shifts/translations during training) — no
-  longer just a theoretical suggestion: Section 6.2 shows both models collapse under a
-  4-pixel translation they were never trained to handle (MLP to chance level, CNN to
-  21%). Augmentation during training is the direct fix, and the CNN should benefit
-  most, since translation/rotation tolerance is exactly what convolution plus
-  augmentation reinforces together.
+- ~~**Data augmentation**~~ — *done since* (Section 12.4): random shifts and rotations
+  fixed the 4-pixel-shift collapse for both models, at the cost of much worse
+  robustness to heavy noise.
+- **Noise augmentation** — the natural follow-up to Section 12.4: add Gaussian noise to
+  the training augmentation and check whether noise robustness recovers without
+  losing the shift gains.
+- **Fashion-MNIST** — rerun the same pipeline on a harder dataset to show it
+  generalizes beyond digits.
+- **In-browser demo** — export the CNN to ONNX and run it client-side, so the web
+  demo (Section 12.3) can be hosted for free.
 - **Wider/longer search**, especially for the CNN — the search only varied 2-layer
   channel widths; depth (3+ convolutional blocks) wasn't explored.
 - **Weight initialization / batch normalization.** Not explored here, since both
@@ -646,9 +661,9 @@ reading of the requirement could expect more loss-function diversity.
 
 - ~~**The Optuna pruner doesn't actually prune**~~ — *done since* (Section 7).
 - **CNN search only varied 2-layer channel widths**, not depth.
-- **No data augmentation** — Section 6.2 turned this from a theoretical suggestion
-  into a demonstrated gap: both models collapse under a 4px translation they were
-  never trained to handle.
+- ~~**No data augmentation**~~ — *done since* (Section 12.4). It leaves a new
+  limitation: the augmented models are much less robust to heavy noise, and only part
+  of the cause (sensitivity to noise on the image border) is explained.
 - **No weight-init or batch-normalization ablation** — not a practical issue at this
   depth, but would matter on a deeper network.
 - **No transfer learning** — reasonable for MNIST specifically, but the natural
@@ -664,7 +679,146 @@ reading of the requirement could expect more loss-function diversity.
 
 ---
 
-## 12. Conclusion
+## 12. Work after the course
+
+After the course delivery, the project was turned into a portfolio-grade repository:
+the same models and results, with the engineering around them hardened and three
+extensions built on the robustness findings. All of it went through small, focused
+pull requests with CI.
+
+### 12.1 Tests, CI and reproducibility
+
+- **135 pytest tests.** 117 run offline on a small synthetic dataset in Kaggle's CSV
+  format: data cleaning, train/val/test disjointness and stratification, model shapes,
+  checkpoint save/load under `weights_only=True`, every config file and search-space
+  choice, every LR scheduler, the entry points, the robustness evaluations, the
+  prediction preprocessing and the web demo. 18 regression tests run only when the
+  real data is present and check that the committed checkpoints reproduce every
+  published number exactly. Each test was checked by deliberately breaking the code
+  it protects: two tests that still passed with that code broken were strengthened,
+  and a flaky test was made deterministic.
+- **CI** (GitHub Actions) runs `ruff` and the offline tests on Python 3.12 and 3.13 for
+  every pull request, with CPU-only torch; `main` is branch-protected so a red PR
+  can't be merged.
+- **Pinned dependencies**, verified by installing them into an empty environment and
+  re-running the full suite. Pinning raised the minimum Python to 3.12 (numpy 2.5
+  requires it, found by CI). Dependabot proposes weekly updates, each tested by CI; a
+  Pillow 13 update is held back with a documented ignore rule because Gradio requires
+  `pillow<13`.
+- **Scripted, seeded robustness evaluations**: `python scripts/shift_robustness.py`
+  regenerates every robustness table and figure from the committed checkpoints.
+- MIT license; LF line endings enforced via `.gitattributes`.
+
+### 12.2 Corrections found along the way
+
+Writing tests and re-deriving every published number from the checkpoints uncovered
+problems in the course version. None changes a conclusion, but each made a number
+wrong or unreproducible:
+
+- **Search trials and cross-seed retrains silently saved a checkpoint each** (Lightning's
+  default checkpointing was still on), piling up as `-v1`, `-v2`, … files: roughly
+  400 MB per 20-trial CNN search. Never read, so results are unaffected; fixed with
+  `enable_checkpointing=False`.
+- **"Accuracy" was balanced accuracy.** torchmetrics' `MulticlassAccuracy` defaults to
+  macro averaging, so every reported accuracy is the mean per-class accuracy (hence
+  identical to macro recall). Kept for consistency with the historical runs, set
+  explicitly in `src/model.py`, and labelled as balanced throughout.
+- **The noise rows of the distribution-shift table weren't reproducible** (unseeded
+  noise). Now seeded; the noise rows moved by under 0.4 points.
+- **Two validation numbers for the MLP** (search trial 97.87% at its last epoch, retrain
+  98.12% at its best epoch) are both explained wherever they appear.
+- **The CNN made 65 test errors, not 66** as first reported (recounted from the
+  confusion matrix, which was correct).
+- **The Optuna pruner was inert** (Section 7), now fixed.
+
+### 12.3 Prediction on real-world images and a web demo
+
+`src/predict.py` predicts the digit in any image. A real photo or drawing doesn't
+look like MNIST, and Section 6.2 shows how little it takes to break the models, so
+images are first converted the way MNIST itself was built: dark-on-light images are
+inverted, the digit is cropped, scaled to fit a 20×20 box keeping its aspect ratio, and
+placed on a 28×28 canvas with its centre of mass at the centre. On the first 1,000 real
+test digits redrawn as dark ink on a white 200×200 page at a random position (plain
+accuracy):
+
+| | CNN | MLP |
+|---|---|---|
+| Original MNIST test images | 99.0% | 98.4% |
+| Photo-like page, with this preprocessing | 98.8% | 98.4% |
+| Photo-like page, naive resize + invert only | 29.4% | 14.8% |
+
+The preprocessing compensates at prediction time for the translation weakness of
+Section 6.2. `app.py` is a Gradio web demo around the same `predict` function (draw a
+digit, see the top-3 prediction live), recorded in `docs/demo.gif`. It runs locally;
+it isn't hosted, because Hugging Face now charges for Gradio Spaces.
+
+### 12.4 Data augmentation experiment
+
+Both winning configurations were retrained with training-data augmentation and
+nothing else changed (`configs/augmented.yaml`, `configs/cnn_augmented.yaml`): each
+time a training image is loaded, it is randomly shifted by up to 4 px per axis and
+rotated by up to 15°. Validation and test images are never augmented. Trained on a
+Kaggle T4 (`notebooks/kaggle_run_executed_augmentation.ipynb`; Kaggle's torch 2.11.0,
+the pinned Lightning 2.6.6), with the test set evaluated once per new model, locally.
+
+**Accuracy on normal digits is unchanged**, within the cross-seed spread of Section
+6.1:
+
+| | Validation accuracy (balanced) | Test accuracy (balanced) |
+|---|---|---|
+| MLP → MLP augmented | 98.12% → 98.15% | 98.30% → 98.21% |
+| CNN → CNN augmented | 99.22% → 99.22% | 99.21% → 99.25% |
+
+**The shift weakness is fixed, and the robustness extends beyond the trained range**
+(plain accuracy, %, every test image shifted right and down):
+
+| Shift (px) | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| MLP | 98.3 | 91.2 | 58.8 | 25.8 | 9.4 | 5.9 | 6.1 | 7.4 | 8.3 |
+| MLP augmented | 98.2 | 98.1 | 98.1 | 97.9 | 94.9 | 76.5 | 35.4 | 14.4 | 9.9 |
+| CNN | 99.2 | 98.4 | 87.1 | 48.3 | 21.2 | 13.8 | 13.7 | 13.9 | 14.0 |
+| CNN augmented | 99.2 | 99.2 | 99.2 | 99.1 | 98.3 | 92.1 | 62.4 | 24.5 | 12.8 |
+
+![Accuracy vs shift for original and augmented models](results/translation_curve.png)
+
+**But it is a trade-off.** Re-running the full Section 6.2 suite shows rotation also
+improved (30° was never trained), while robustness to noise got much worse:
+
+![Distribution-shift robustness, original vs augmented](results/augmentation_shift_robustness.png)
+
+| Perturbation | MLP | MLP augmented | CNN | CNN augmented |
+|---|---|---|---|---|
+| Clean | 98.31% | 98.21% | 99.23% | 99.25% |
+| Rotate 15° | 95.46% | 96.92% | 98.10% | 98.39% |
+| Rotate 30° | 80.76% | 88.57% | 90.14% | 93.54% |
+| Translate 4px | 9.42% | 94.89% | 21.24% | 98.29% |
+| Noise σ=0.1 | 90.33% | 70.90% | 99.23% | 91.05% |
+| Noise σ=0.3 | 41.68% | 15.25% | 78.50% | 13.39% |
+
+Under heavy noise the augmented models answer "8" for almost every image (96% of the
+CNN's predictions): noise lights up about 47% of the pixels instead of 17%, which
+reads as "a lot of ink". To test whether the models now react to noise on the border,
+where MNIST digits never reach, noise (σ=0.3) was added only outside the central 20×20
+box, or only inside it:
+
+| | everywhere | border only | centre only |
+|---|---|---|---|
+| CNN → CNN augmented | 78.5% → 13.4% | 99.0% → 86.4% | 82.4% → 31.4% |
+| MLP → MLP augmented | 41.7% → 15.2% | 82.2% → 44.2% | 60.1% → 49.2% |
+
+The original CNN almost completely ignores the border (99.0% with border-only noise,
+vs. 99.2% clean): on centred digits it is always empty. Training on shifted digits
+taught the augmented models that border pixels matter, so noise there now counts.
+That explains part of the drop; the augmented models are also much worse with noise
+over the digit itself, which this experiment doesn't explain. The general lesson:
+fixing robustness to one kind of shift can reduce robustness to another, so the whole
+robustness suite has to be re-run after any change. The CLI and web demo keep using
+the original CNN, whose preprocessing already handles the shift problem and which
+copes better with noise.
+
+---
+
+## 13. Conclusion
 
 The MLP deliverable meets every stated requirement: cleaned and verified data, a
 proper stratified split, a config-driven and genuinely customizable pipeline, a
@@ -680,5 +834,12 @@ noise. Two further robustness checks — cross-seed variance and distribution-sh
 evaluation — extend this from "here is a number" to "here is how much to trust that
 number, and where its limits are": both models are stable across retrains (under a
 quarter of a percentage point of spread), but neither generalizes to transformations
-it was never trained on, most starkly under small translations. That gap, not further
-hyperparameter tuning, is the most consequential next step for either model.
+it was never trained on, most starkly under small translations.
+
+The work after the course (Section 12) addressed that gap twice: at prediction time,
+MNIST-style preprocessing restores 98.8% accuracy on photo-like images (29.4%
+without it), and in training, data augmentation lifts accuracy under a 4-pixel shift
+from 21% to 98% for the CNN without costing clean accuracy. The augmentation result
+also showed its price, a collapse under heavy noise, and why it is worth measuring
+everything a change might break, not only what it was meant to fix. Every published
+number is now reproducible from the committed checkpoints and pinned by tests.
