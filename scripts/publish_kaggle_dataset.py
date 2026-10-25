@@ -3,10 +3,10 @@ Notebook (which has no access to this local filesystem) can import the
 project's code. Re-run this after any local change to src/ or configs/ that
 should be reflected on Kaggle.
 
-Kaggle only lets a dataset folder's subdirectories be uploaded zipped (each
-becomes one archive, flattened at the zip root) -- see kaggle_train.ipynb in
-notebooks/ for how those archives get unpacked back into an importable
-`src` package inside the notebook.
+Kaggle only lets a dataset folder's subdirectories be uploaded zipped, but it
+extracts them back into real folders server-side, so a notebook just adds the
+dataset directory to sys.path and imports `src` (see the first cells of
+notebooks/kaggle_run_executed.ipynb).
 """
 from __future__ import annotations
 

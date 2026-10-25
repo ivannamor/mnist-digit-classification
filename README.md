@@ -1,8 +1,10 @@
-# MNIST Digit Classification — MLP, and a CNN Comparison
+# MNIST: MLP vs CNN — Tuning, Seed Variance and Robustness Under Distribution Shift
 
 [![CI](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml)
 
-A PyTorch Lightning pipeline for the Kaggle "Digit Recognizer" (MNIST) dataset, built for the Deep Learning Fundamentals project. Covers data cleaning, a stratified train/val/test split, a configurable MLP architecture, a systematic hyperparameter search, and a final held-out test evaluation. The required deliverable is the MLP; a CNN was added afterward as a stretch-goal comparison, built and searched the same rigorous way.
+An end-to-end PyTorch Lightning project on the Kaggle "Digit Recognizer" (MNIST) data, built around evaluation you can trust: a test set touched exactly once, results that hold across 5 random seeds, robustness tests that show where both models break (a 4-pixel shift), and a prediction pipeline that compensates for it on real-world images. The tuned CNN reaches 99.2% test accuracy. The headline results, the robustness table and the prediction numbers are reproducible from the committed checkpoints and pinned by regression tests.
+
+Started as the Deep Learning Fundamentals project at Turing College, where the required deliverable was the MLP; the CNN comparison, robustness checks, tests and demo were added beyond the brief.
 
 ![Web demo: drawing digits and getting the CNN's live top-3 prediction](docs/demo.gif)
 
@@ -81,7 +83,7 @@ python -m src.train  --config configs/cnn_best_from_search.yaml      # best chec
 python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
 ```
 
-Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
+Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed trials ran on a Kaggle GPU (`notebooks/kaggle_run_executed_robustness.ipynb`); the distribution-shift table and plot are regenerated locally with `python scripts/shift_robustness.py` (both use `src/robustness.py`).
 
 **Predict on your own image** (a photo, scan or drawing of a single digit; uses the tuned CNN by default):
 
@@ -141,6 +143,7 @@ Pixel intensities are heavily bimodal — mostly-black backgrounds vastly outnum
 - **Config-driven, multi-architecture design** (`ExperimentConfig` dataclasses, loaded from YAML). An `architecture: mlp | cnn` field selects both the model config dataclass and the `LightningModule` subclass (`build_model(config)` / `load_model(config, ckpt_path)`). The data module always yields un-flattened `(1, 28, 28)` tensors — flattening happens inside `MLPClassifier.forward()`, not the data loader — which is exactly why adding the CNN later required zero changes to data loading, cleaning, or splitting: only a new model class and config.
 - **A shared `BaseClassifier`** holds the training/validation/test-step and optimizer logic common to both architectures; `MLPClassifier` and `CNNClassifier` only differ in `_build_net`/`forward`. Avoids duplicating ~70 lines of near-identical Lightning boilerplate across two model classes.
 - **Optuna over manual grid search** — the brief asks for comparisons across 7+ hyperparameter dimensions (optimizer, batch size, activation, learning rate, dropout, architecture, loss); a full grid over that space is combinatorially impractical. Optuna samples the space and uses past trial results to guide future trials, rather than searching blindly. Run independently for the MLP and the CNN, each with its own architecture-specific search space (`search.py` dispatches on `config.architecture`).
+- **Median pruning of bad trials** — each trial reports its validation accuracy after every epoch, and `MedianPruner` stops it once it's below the median of earlier trials at the same epoch (after 5 complete trials and a 3-epoch warm-up), so larger searches don't waste time finishing hopeless configurations. Added after the published searches ran: those 20-trial searches trained every trial to its own early-stopping point.
 - **Stratified splitting** (`sklearn.train_test_split`, `stratify=y`, twice — train vs. rest, then val vs. test) — preserves class balance across all three partitions.
 - **Fixed random seeds** (`pl.seed_everything`, plus a fixed split seed) — so differences between experiments reflect the hyperparameters (or architecture) being compared, not split/init noise.
 - **`torchmetrics`** for accuracy/precision/recall/confusion matrix — computed natively inside Lightning's `validation_step`/`test_step`, avoiding hand-rolled metric bookkeeping.
@@ -193,7 +196,6 @@ The CNN degrades more gracefully than the MLP under every perturbation, most dra
 
 ## Suggestions for further improvement
 
-- **A real pruning callback for the Optuna search.** Both searches use `optuna.pruners.MedianPruner`, but trials don't report intermediate per-epoch metrics back to Optuna, so it currently can't actually cut a clearly-bad trial short — every trial runs to its own early-stopping point regardless of how it compares to others so far. Wiring in per-epoch reporting would make a larger search (more trials, wider ranges) more efficient.
 - **Wider/longer search**, especially for the CNN — 20 trials over a moderately-sized space is a reasonable first pass, not an exhaustive one. The CNN search only varied 2-layer channel widths; depth (3+ conv blocks) wasn't explored.
 - **Data augmentation** (small rotations/shifts/translations) — no longer just a theoretical suggestion: the robustness check above shows both models collapse under a 4px translation (MLP to chance level, CNN to 21%) since neither was ever trained on shifted examples. Augmentation during training is the direct fix, and the CNN in particular should benefit most, since translation/rotation invariance is exactly what convolution + augmentation reinforces together.
 - **Weight initialization / BatchNorm.** Not explored here (both architectures are shallow enough that vanishing/exploding gradients weren't a practical issue), but worth an ablation on a deeper CNN.
@@ -205,7 +207,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `src/` — the pipeline (data module, model, train/search/evaluate entry points), runnable locally or on Kaggle, for either architecture.
 - `configs/baseline.yaml` / `configs/best_from_search.yaml` — the MLP configs behind the results above.
 - `configs/cnn_baseline.yaml` / `configs/cnn_best_from_search.yaml` — the CNN configs.
-- `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
+- `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the Kaggle GPU runs (baseline, search, retrain, test evaluation) with their outputs intact; `notebooks/kaggle_run_executed_robustness.ipynb` — the cross-seed trials. To rerun one, upload it to Kaggle and *Run all* (outputs are overwritten). `notebooks/exploration.ipynb` — the EDA.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
 - `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.

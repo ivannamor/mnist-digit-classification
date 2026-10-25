@@ -17,7 +17,7 @@ from src.data_module import MNISTDataModule
 from src.evaluate import evaluate
 from src.model import build_model
 from src.robustness import _PERTURBATIONS, run_cross_seed_trials, run_shift_robustness
-from src.search import objective
+from src.search import create_study, objective
 from src.train import train
 from tests.test_configs import _valid_params
 
@@ -133,6 +133,39 @@ def test_search_objective_returns_validation_accuracy(architecture, data_config,
     assert 0.0 <= score <= 1.0
     # Trials only report a score; a checkpoint per trial would pile up on disk.
     assert not list(tmp_path.rglob("*.ckpt"))
+
+
+def _run_one_trial(pruner: optuna.pruners.BasePruner, data_config) -> optuna.trial.FrozenTrial:
+    study = optuna.create_study(direction="maximize", pruner=pruner)
+    config = _tiny_config("mlp", data_config)
+    config.trainer.max_epochs = 3
+    config.trainer.patience = 10  # keep early stopping out of the way
+    params = _valid_params("mlp", batch_size=32)
+    study.enqueue_trial(params)
+    study.optimize(lambda trial: objective(trial, config), n_trials=1)
+    return study.trials[0]
+
+
+def test_trials_report_val_accuracy_every_epoch(data_config):
+    """Without these reports the pruner has nothing to judge (the original bug)."""
+    trial = _run_one_trial(optuna.pruners.NopPruner(), data_config)
+    assert trial.state == optuna.trial.TrialState.COMPLETE
+    assert sorted(trial.intermediate_values) == [0, 1, 2]
+    assert trial.value == trial.intermediate_values[2]  # the objective returns the last epoch's score
+
+
+def test_trial_stops_when_pruner_says_so(data_config):
+    # ThresholdPruner(lower=2.0) prunes any trial scoring below 2.0, i.e. every trial.
+    trial = _run_one_trial(optuna.pruners.ThresholdPruner(lower=2.0), data_config)
+    assert trial.state == optuna.trial.TrialState.PRUNED
+    assert sorted(trial.intermediate_values) == [0], "should stop right after the first epoch"
+
+
+def test_create_study_prunes_with_warmup():
+    pruner = create_study().pruner
+    assert isinstance(pruner, optuna.pruners.MedianPruner)
+    assert pruner._n_startup_trials == 5
+    assert pruner._n_warmup_steps == 3
 
 
 # --- Robustness experiments ------------------------------------------------
