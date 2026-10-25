@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import zipfile
+from collections.abc import Callable
 from functools import cache
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import torch
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
+from torchvision.transforms import v2
 
 from src.config import DataConfig
 
@@ -70,17 +72,39 @@ def _load_clean_and_split(
 
 
 class MNISTCsvDataset(Dataset):
-    def __init__(self, pixels: np.ndarray, labels: np.ndarray):
+    def __init__(self, pixels: np.ndarray, labels: np.ndarray, transform: Callable | None = None):
         self.pixels = pixels
         self.labels = labels
+        self.transform = transform
 
     def __len__(self) -> int:
         return len(self.labels)
 
     def __getitem__(self, idx: int):
         image = torch.from_numpy(self.pixels[idx]).float().view(1, 28, 28) / 255.0
+        if self.transform is not None:
+            image = self.transform(image)
         label = int(self.labels[idx])
         return image, label
+
+
+def build_train_transform(config: DataConfig) -> Callable | None:
+    """Random shift + rotation for training images, or None when both are 0.
+
+    A fresh random transform is drawn every time an image is loaded, so each
+    epoch sees different variants. Uncovered areas are filled with 0 (the black
+    MNIST background); bilinear interpolation keeps rotated strokes smooth.
+    """
+    if config.augment_max_shift_px == 0 and config.augment_max_rotation_deg == 0:
+        return None
+    # RandomAffine takes the shift as a fraction of the image size per axis.
+    fraction = config.augment_max_shift_px / 28
+    return v2.RandomAffine(
+        degrees=config.augment_max_rotation_deg,
+        translate=(fraction, fraction),
+        interpolation=v2.InterpolationMode.BILINEAR,
+        fill=0.0,
+    )
 
 
 class MNISTDataModule(pl.LightningDataModule):
@@ -125,7 +149,7 @@ class MNISTDataModule(pl.LightningDataModule):
             self.config.test_fraction,
         )
 
-        self.train_dataset = MNISTCsvDataset(pixels_train, labels_train)
+        self.train_dataset = MNISTCsvDataset(pixels_train, labels_train, build_train_transform(self.config))
         self.val_dataset = MNISTCsvDataset(pixels_val, labels_val)
         self.test_dataset = MNISTCsvDataset(pixels_test, labels_test)
 
