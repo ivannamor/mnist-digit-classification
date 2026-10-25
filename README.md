@@ -81,7 +81,7 @@ python -m src.train  --config configs/cnn_best_from_search.yaml      # best chec
 python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
 ```
 
-Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed and distribution-shift experiments are run from `notebooks/kaggle_robustness.ipynb` (functions in `src/robustness.py`).
+Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed trials ran on a Kaggle GPU (`notebooks/kaggle_run_executed_robustness.ipynb`); the distribution-shift table and plot are regenerated locally with `python scripts/shift_robustness.py` (both use `src/robustness.py`).
 
 **Predict on your own image** (a photo, scan or drawing of a single digit; uses the tuned CNN by default):
 
@@ -205,7 +205,7 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `src/` — the pipeline (data module, model, train/search/evaluate entry points), runnable locally or on Kaggle, for either architecture.
 - `configs/baseline.yaml` / `configs/best_from_search.yaml` — the MLP configs behind the results above.
 - `configs/cnn_baseline.yaml` / `configs/cnn_best_from_search.yaml` — the CNN configs.
-- `notebooks/kaggle_train.ipynb` / `kaggle_train_cnn.ipynb` — reusable templates for a fresh Kaggle GPU run; `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the actual executed runs with outputs intact; `notebooks/kaggle_robustness.ipynb` — the cross-seed trials.
+- `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the Kaggle GPU runs (baseline, search, retrain, test evaluation) with their outputs intact; `notebooks/kaggle_run_executed_robustness.ipynb` — the cross-seed trials. To rerun one, upload it to Kaggle and *Run all* (outputs are overwritten). `notebooks/exploration.ipynb` — the EDA.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
 - `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.
