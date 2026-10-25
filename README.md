@@ -2,13 +2,15 @@
 
 [![CI](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml)
 
-An end-to-end PyTorch Lightning project on the Kaggle "Digit Recognizer" (MNIST) data, built around evaluation you can trust: a test set touched exactly once, results that hold across 5 random seeds, robustness tests that show where both models break (a 4-pixel shift), and a prediction pipeline that compensates for it on real-world images. The tuned CNN reaches 99.2% test accuracy. The headline results, the robustness table and the prediction numbers are reproducible from the committed checkpoints and pinned by regression tests.
+An end-to-end PyTorch Lightning project on the Kaggle "Digit Recognizer" (MNIST) data, built around evaluation you can trust: a test set touched exactly once, results that hold across 5 random seeds, robustness tests that show where both models break (a 4-pixel shift), and two fixes for it — a prediction pipeline for real-world images and data augmentation, whose trade-off is measured too. The tuned CNN reaches 99.2% test accuracy. The headline results, the robustness tables and the prediction numbers are reproducible from the committed checkpoints and pinned by regression tests.
 
-Started as the Deep Learning Fundamentals project at Turing College, where the required deliverable was the MLP; the CNN comparison, robustness checks, tests and demo were added beyond the brief.
+Started as the Deep Learning Fundamentals project at Turing College, where the required deliverable was the MLP; the CNN comparison, robustness checks, tests and demo were added beyond the brief. [REPORT.md](REPORT.md) has the full write-up.
 
 ![Web demo: drawing digits and getting the CNN's live top-3 prediction](docs/demo.gif)
 
-*The web demo (`python app.py`, see [Try the demo](#quickstart)): draw a digit, and the tuned CNN predicts it live.*
+*The web demo (`python app.py`): draw a digit, and the tuned CNN predicts it live.*
+
+**Contents:** [Results](#results) · [Robustness](#robustness) · [Predicting on real-world images](#predicting-on-real-world-images) · [Quickstart](#quickstart) · [How it's built](#how-its-built) · [Future work](#future-work) · [Project structure](#project-structure)
 
 ## Results
 
@@ -19,37 +21,57 @@ Started as the Deep Learning Fundamentals project at Turing College, where the r
 | CNN baseline (`configs/cnn_baseline.yaml`) | 98.71% | — | — | — |
 | **CNN best** (Optuna search, `configs/cnn_best_from_search.yaml`) | 99.22% | **99.21%** | 99.22% | 99.21% |
 
-How to read these numbers:
-- **Accuracy here is balanced accuracy**: torchmetrics' `MulticlassAccuracy` with macro averaging computes the accuracy of each digit class and averages the ten. That is mathematically the same as macro recall, which is why those two columns match. Plain accuracy (correct ÷ total) on the test set is 98.31% (MLP) and 99.23% (CNN); with near-balanced classes the two differ by at most 0.02 points. All precision and recall values are macro-averaged too.
-- **Validation is measured on the committed checkpoints**: each is the best epoch of a fresh retrain of the winning configuration. The search's own trial for that configuration reported a lower validation score (97.87% for the MLP) because a trial's score is taken at its *last* epoch, not its best; for the CNN both are 99.22%.
-
-The CNN's *un-tuned baseline* (98.71%) already beats the MLP's *fully tuned best* (98.12%) — a direct illustration of why architecture matters more than hyperparameter tuning here. The fully-tuned CNN roughly halves the MLP's error rate (1.70% → 0.79% of test digits misclassified).
-
-The test set was evaluated exactly once per model, after each model's best configuration was already selected from validation results — never used for any model or hyperparameter decision. Both models use the identical stratified split (same seed, same data), so the comparison is apples-to-apples.
-
-### MLP
-
-**Confusion matrix** (test set):
-
-![MLP confusion matrix](results/mlp_confusion_matrix.png)
-
-**Sample misclassified digits**: most of these are genuinely ambiguous even to a human eye (e.g. a looping "1" that reads as "8", a "9" that reads as "0") — a sign the remaining errors are close to the ceiling of what a flattened-pixel MLP can resolve, rather than a systematic model weakness.
-
-![MLP misclassified examples](results/mlp_misclassified_examples.png)
-
-### CNN
-
-**Confusion matrix** (test set):
+- **Accuracy is balanced accuracy** (torchmetrics' macro averaging: the mean of the ten per-class accuracies), which is why it equals macro recall. Plain accuracy (correct ÷ total) is 98.31% and 99.23%; with near-balanced classes the two differ by at most 0.02 points.
+- **The test set was evaluated exactly once per model**, after every choice was made on validation data. Both models use the identical stratified 60/20/20 split.
+- The **untuned CNN baseline (98.71%) already beats the fully tuned MLP (98.12%)**: architecture matters more than tuning here. The tuned CNN makes 65 errors on the 8,400 test digits against the MLP's 142 (0.77% vs. 1.69%), mostly by fixing the 3↔5 and 1→8 confusions that convolution is built to resolve.
 
 ![CNN confusion matrix](results/cnn_confusion_matrix.png)
 
-**Sample misclassified digits**: again, dominated by genuinely ambiguous handwriting rather than a systematic weakness.
+The remaining CNN errors are mostly genuinely ambiguous handwriting:
 
 ![CNN misclassified examples](results/cnn_misclassified_examples.png)
 
+## Robustness
+
+**The results are stable.** Each winning configuration was retrained with 5 different random seeds on the same split:
+
+| | Mean test accuracy (balanced) | Std. dev. | Range |
+|---|---|---|---|
+| MLP | 98.199% | 0.061 pp | 98.127% – 98.282% |
+| CNN | 99.241% | 0.027 pp | 99.214% – 99.272% |
+
+**But a 4-pixel shift breaks both models.** Evaluated on perturbed test images, the original MLP falls to chance level (9.4%) and the CNN to 21.2%: both only ever saw centred digits. Retraining the same configurations with **data augmentation** (random shifts up to 4 px and rotations up to 15° on training images only, `configs/*augmented.yaml`) fixes it without costing accuracy on normal digits (test accuracy CNN 99.21% → 99.25%, MLP 98.30% → 98.21%, both within the seed spread above), and the robustness extends beyond the trained range:
+
+![Accuracy vs shift for original and augmented models](results/translation_curve.png)
+
+**It's a trade-off, not a free win.** Re-running the full robustness suite shows rotation also improved, but heavy noise got much worse (plain accuracy, %):
+
+| Perturbation | MLP | MLP augmented | CNN | CNN augmented |
+|---|---|---|---|---|
+| Clean | 98.31 | 98.21 | 99.23 | 99.25 |
+| Rotate 15° | 95.46 | 96.92 | 98.10 | 98.39 |
+| Rotate 30° | 80.76 | 88.57 | 90.14 | 93.54 |
+| Translate 4px | 9.42 | **94.89** | 21.24 | **98.29** |
+| Noise σ=0.1 | 90.33 | 70.90 | 99.23 | 91.05 |
+| Noise σ=0.3 | 41.68 | **15.25** | 78.50 | **13.39** |
+
+Under heavy noise the augmented models answer "8" for almost every image. Part of the reason is measurable: the original CNN almost completely ignores the image border, where centred digits never reach (noise only on the border leaves it at 99.0%), while the augmented CNN, trained on shifted digits, no longer does (86.4%). It is also more sensitive to noise over the digit itself (82.4% → 31.4%), which that experiment doesn't explain. The lesson: re-run the whole robustness suite after any change, not just the metric being fixed. Full tables, figures and analysis: [REPORT.md, section 12.4](REPORT.md#124-data-augmentation-experiment).
+
+## Predicting on real-world images
+
+A real photo or drawing doesn't look like MNIST, and the shift results show how little that takes to break a model. So `src/predict.py` first converts images the way MNIST itself was built: dark-on-light images are inverted, the digit is cropped, scaled to fit a 20×20 box (keeping its aspect ratio), and centred by centre of mass on a 28×28 canvas. On the first 1,000 real test digits redrawn as dark ink on a white 200×200 page at a random position (plain accuracy):
+
+| | CNN | MLP |
+|---|---|---|
+| Original MNIST test images | 99.0% | 98.4% |
+| Photo-like page, **with** this preprocessing | 98.8% | 98.4% |
+| Photo-like page, naive resize + invert only | 29.4% | 14.8% |
+
+The CLI and the web demo use the original CNN: preprocessing already handles the shift problem at prediction time, and the original copes better with noise.
+
 ## Quickstart
 
-Requires Python 3.12+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU.
+Requires Python 3.12+. A GPU is optional: evaluating the included checkpoints takes about a minute on CPU. Dependencies are pinned to the verified versions; [Dependabot](.github/dependabot.yml) proposes updates weekly, each tested by CI.
 
 ```bash
 git clone https://github.com/ivannamor/mnist-digit-classification.git
@@ -59,201 +81,62 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Kaggle data access** (one-time). The data is downloaded automatically on first run, which needs a Kaggle API token:
-
-1. Accept the rules of the [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer/rules) competition (otherwise the download returns 403).
-2. Create an API token under *Settings → API* on kaggle.com.
-3. `cp .env.example .env` and paste the token into `KAGGLE_API_TOKEN`.
-
-Alternatively, download `train.csv` manually from the competition page and place it at `data/train.csv` — no token needed.
-
-**Reproduce the headline result** from the included checkpoint (no training):
+**Data.** It downloads automatically on first run with a Kaggle API token: accept the [Digit Recognizer rules](https://www.kaggle.com/competitions/digit-recognizer/rules) (otherwise the download returns 403), create a token under *Settings → API* on kaggle.com, then `cp .env.example .env` and paste it into `KAGGLE_API_TOKEN`. Or download `train.csv` from the competition page into `data/train.csv`, no token needed.
 
 ```bash
+# Reproduce the headline results from the included checkpoints (expected: CNN 99.21%, MLP 98.30%)
 python -m src.evaluate --config configs/cnn_best_from_search.yaml --checkpoint results/cnn_best_from_search.ckpt --output-dir outputs/evaluation_cnn
 python -m src.evaluate --config configs/best_from_search.yaml     --checkpoint results/mlp_best_from_search.ckpt --output-dir outputs/evaluation_mlp
-```
 
-Each prints test accuracy/precision/recall (expected: CNN 99.21%, MLP 98.30%) and writes its confusion matrix and misclassified-examples plots to the given `--output-dir`.
+# Predict the digit in your own images (tuned CNN by default)
+python -m src.predict my_digit.png          # -> my_digit.png: 9   (9: 95.4%, 1: 0.8%, 6: 0.7%)
 
-**Train from scratch, or rerun the hyperparameter search:**
+# Regenerate every robustness table and figure
+python scripts/shift_robustness.py
 
-```bash
-python -m src.train  --config configs/cnn_best_from_search.yaml      # best checkpoint saved under outputs/logs/
+# Train from scratch, or rerun a hyperparameter search (any YAML in configs/ works)
+python -m src.train  --config configs/cnn_best_from_search.yaml
 python -m src.search --config configs/cnn_baseline.yaml --n-trials 20
-```
 
-Any YAML in `configs/` works with all three commands; `architecture: mlp | cnn` selects the model. The cross-seed trials ran on a Kaggle GPU (`notebooks/kaggle_run_executed_robustness.ipynb`); the distribution-shift table and plot are regenerated locally with `python scripts/shift_robustness.py` (both use `src/robustness.py`).
-
-**Predict on your own image** (a photo, scan or drawing of a single digit; uses the tuned CNN by default):
-
-```bash
-python -m src.predict my_digit.png another.jpg
-```
-```
-my_digit.png: 9   (9: 95.4%, 1: 0.8%, 6: 0.7%)
-```
-
-Pass `--config`/`--checkpoint` to use the MLP instead. Probabilities top out around 90–95% rather than ~100% because both models were trained with label smoothing (0.1).
-
-A real image doesn't look like MNIST, and the [distribution-shift results](#distribution-shift-evaluation) show how little it takes to break the models. So `src/predict.py` first converts images the way MNIST itself was built: dark-on-light images are inverted, the digit is cropped and scaled to fit a 20×20 box (keeping its aspect ratio), and placed on a 28×28 canvas with its centre of mass at the centre. Measured (plain accuracy) on the first 1,000 real test digits, redrawn as dark ink on a white 200×200 page at a random position:
-
-| | CNN | MLP |
-|---|---|---|
-| Original MNIST test images | 99.0% | 98.4% |
-| Photo-like page, **with** this preprocessing | 98.8% | 98.4% |
-| Photo-like page, naive resize + invert only | 29.4% | 14.8% |
-
-**Try the demo** (the one in the GIF above):
-
-```bash
+# Web demo, then open http://127.0.0.1:7860
 pip install -r requirements-demo.txt
-python app.py                # then open http://127.0.0.1:7860
-```
+python app.py
 
-It's a small [Gradio](https://www.gradio.app/) app around the same `predict` function, so drawings go through exactly the preprocessing described above.
-
-**Run the tests:**
-
-```bash
+# Tests
 pip install -r requirements-dev.txt
 pytest -m "not regression"   # everyday check: no real data needed, ~1 min on CPU
 pytest                       # full suite incl. real-data regression tests, ~7 min on CPU
 ```
 
-The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, image preprocessing for prediction, and a short training run through each entry point. Extra regression tests evaluate the committed checkpoints on the real data, checking they reproduce the results table above exactly and still recognise photo-like images through `predict`; they run only when `data/train.csv` is present and are skipped otherwise.
+Prediction probabilities top out around 90–95% because the models were trained with label smoothing. The test suite runs offline on a small synthetic dataset in Kaggle's CSV format; the regression tests run only when `data/train.csv` is present and check that the committed checkpoints reproduce every published number exactly.
 
-## Data
+## How it's built
 
-Source: Kaggle's [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer) competition. Its `test.csv` has no labels (it exists for leaderboard submission only), so the full train/validation/test split (60/20/20, stratified) is built entirely from the 42,000-row `train.csv`.
+- **PyTorch Lightning** with a config-driven design: every experiment is a YAML file loaded into dataclasses, and `architecture: mlp | cnn` selects the model. Images stay `(1, 28, 28)` until the MLP flattens them in `forward()`, which is why adding the CNN needed no data-pipeline changes. A shared `BaseClassifier` holds the training and evaluation logic.
+- **Optuna** hyperparameter search over 8 dimensions for the MLP and 10 for the CNN (20 trials each on a Kaggle T4), with median pruning of clearly-losing trials (added after the published searches ran).
+- **Stratified two-stage split** and **separate seeds** for the split and for training, so cross-seed checks vary one while holding the other fixed.
+- **Macro-averaged metrics**, set explicitly rather than relying on library defaults.
+- **Winning configurations**: MLP `[512, 256]`, GELU, AdamW, dropout ≈ 0.26; CNN conv `[64, 128]`, kernel 3, FC 256, GELU, Adam, dropout ≈ 0.015. Both landed on GELU and label smoothing 0.1 independently; the CNN needed 15–20× less explicit regularization, consistent with convolution's built-in weight sharing.
+- **Engineering**: 135 tests (synthetic-data suite plus real-data regression tests), CI on Python 3.12 and 3.13, pinned dependencies with Dependabot, and seeded, scripted robustness evaluations.
 
-Cleaning checks performed: missing values, exact duplicate rows, pixel values outside [0, 255], label values outside [0, 9], blank (all-zero) images. On this dataset all counts came back zero — it's already clean — but the checks are kept in the pipeline as guardrails rather than assumed. Class balance was also verified explicitly (9.0%–11.2% per digit) rather than assumed. Full EDA, actually executed rather than just asserted, is in `notebooks/exploration.ipynb`.
+The reasoning behind each choice, the full search spaces, per-class error analysis and the engineering problems solved along the way are in [REPORT.md](REPORT.md).
 
-![Class balance](results/eda_class_balance.png)
+## Future work
 
-![Sample digits, one per class](results/eda_sample_digits.png)
+- **Noise augmentation**: add Gaussian noise to the training augmentation and check whether noise robustness recovers without losing the shift gains.
+- **Fashion-MNIST**: run the same pipeline on a harder dataset to show it generalizes beyond digits.
+- **In-browser demo**: export the CNN to ONNX and run it client-side, so the demo can be hosted for free.
+- **Wider search**: deeper CNNs (3+ conv blocks), and searching with augmentation on rather than retraining the existing winners.
 
-Pixel intensities are heavily bimodal — mostly-black backgrounds vastly outnumber the bright stroke pixels (note the log scale) — which is why pixel values are normalized to `[0, 1]` before training rather than used as raw `[0, 255]` integers.
+## Project structure
 
-![Pixel intensity distribution](results/eda_pixel_distribution.png)
-
-## Techniques used, and why
-
-- **PyTorch Lightning** over raw PyTorch — removes GPU-handling and training-loop boilerplate, and gives callbacks (`ModelCheckpoint`, `EarlyStopping`, `LearningRateMonitor`) and `torchmetrics` integration for free.
-- **Config-driven, multi-architecture design** (`ExperimentConfig` dataclasses, loaded from YAML). An `architecture: mlp | cnn` field selects both the model config dataclass and the `LightningModule` subclass (`build_model(config)` / `load_model(config, ckpt_path)`). The data module always yields un-flattened `(1, 28, 28)` tensors — flattening happens inside `MLPClassifier.forward()`, not the data loader — which is exactly why adding the CNN later required zero changes to data loading, cleaning, or splitting: only a new model class and config.
-- **A shared `BaseClassifier`** holds the training/validation/test-step and optimizer logic common to both architectures; `MLPClassifier` and `CNNClassifier` only differ in `_build_net`/`forward`. Avoids duplicating ~70 lines of near-identical Lightning boilerplate across two model classes.
-- **Optuna over manual grid search** — the brief asks for comparisons across 7+ hyperparameter dimensions (optimizer, batch size, activation, learning rate, dropout, architecture, loss); a full grid over that space is combinatorially impractical. Optuna samples the space and uses past trial results to guide future trials, rather than searching blindly. Run independently for the MLP and the CNN, each with its own architecture-specific search space (`search.py` dispatches on `config.architecture`).
-- **Median pruning of bad trials** — each trial reports its validation accuracy after every epoch, and `MedianPruner` stops it once it's below the median of earlier trials at the same epoch (after 5 complete trials and a 3-epoch warm-up), so larger searches don't waste time finishing hopeless configurations. Added after the published searches ran: those 20-trial searches trained every trial to its own early-stopping point.
-- **Stratified splitting** (`sklearn.train_test_split`, `stratify=y`, twice — train vs. rest, then val vs. test) — preserves class balance across all three partitions.
-- **Fixed random seeds** (`pl.seed_everything`, plus a fixed split seed) — so differences between experiments reflect the hyperparameters (or architecture) being compared, not split/init noise.
-- **`torchmetrics`** for accuracy/precision/recall/confusion matrix — computed natively inside Lightning's `validation_step`/`test_step`, avoiding hand-rolled metric bookkeeping.
-- **Macro-averaged metrics** (accuracy, precision, recall) — plain accuracy alone can be misleading under class imbalance, while macro averaging weights every digit class equally. This dataset turned out to be balanced (verified, not assumed), but macro metrics are the more defensible default. The averaging is set explicitly in `src/model.py` rather than relying on torchmetrics' default.
-- **Cached data loading** (`functools.cache` on the load-clean-split step, keyed on the parameters that actually affect the result). `setup()` was getting called ~54 times across this project's baseline/search/retrain/cross-seed runs, most of them within the same process — measured locally, a cold load took 4.65s, a cached one ~0s, with array-identical results.
-
-### The winning configurations, and what they say
-
-**MLP**: `hidden_dims=[512,256]`, `activation=gelu`, `optimizer=adamw`, `dropout≈0.26`, `weight_decay≈0.00043`, `label_smoothing=0.1`, `batch_size=128`. Three regularizers together — consistent with it training the full 30 epochs without early stopping (regularization slows convergence) while generalizing better than the baseline.
-
-**CNN**: `conv_channels=[64,128]`, `kernel_size=3`, `fc_hidden_dim=256`, `activation=gelu`, `optimizer=adam`, `dropout≈0.015`, `weight_decay≈0.00002`, `label_smoothing=0.1`, `batch_size=64`. Notably, both regularization strengths (dropout, weight decay) are roughly 15-20x *smaller* than the MLP's — consistent with CNNs already having a strong built-in regularizer via weight sharing (the same small filter reused across the whole image means far fewer independent parameters relative to representational capacity than a dense layer), so less explicit regularization was needed to generalize well.
-
-Both winning configs converged on `activation=gelu` and `label_smoothing=0.1` independently — some evidence these help regardless of architecture, for this problem. Since both use the same `label_smoothing`, their `test_loss` values (MLP 0.555, CNN 0.531) are directly comparable to each other, unlike the within-model baseline-vs-search comparisons (where `label_smoothing` differs and so loss values aren't comparable — only accuracy/precision/recall are, within a model).
-
-## Robustness checks
-
-Beyond the single-run test accuracy above, two follow-up experiments probe whether that number is trustworthy and how far it generalizes.
-
-### Cross-seed variance
-
-Both winning configs were retrained 5 times each with different random initialization (`training_seed` 42–46), keeping the data split fixed so every retrain is evaluated on the identical test set. This isolates "how much does the number move around due to random init/shuffling alone" from split luck.
-
-![Cross-seed variance](results/cross_seed_variance.png)
-
-| | Mean test accuracy (balanced) | Std dev | Range |
-|---|---|---|---|
-| MLP | 98.199% | 0.061pp | 98.127% – 98.282% |
-| CNN | 99.241% | 0.027pp | 99.214% – 99.272% |
-
-Both models are stable — well under a quarter of a percentage point of spread — so the headline numbers aren't a lucky single run. The CNN is also *more* consistent run-to-run than the MLP (roughly half the standard deviation), on top of being more accurate. One curiosity worth naming honestly: the CNN's `training_seed=42` rerun reproduced its original result bit-for-bit; the MLP's did not, despite "the same seed" in both cases. `pl.seed_everything` seeds the RNGs but doesn't force bit-identical GPU execution (cuDNN kernel scheduling has some inherent floating-point non-determinism unless `torch.use_deterministic_algorithms` is explicitly forced) — worth knowing precisely rather than assuming "same seed" means "same result" on GPU.
-
-### Distribution-shift evaluation
-
-The already-trained models (no retraining) were evaluated on perturbed versions of the test set — rotation, translation, and Gaussian noise — to check generalization beyond MNIST's own narrow, curated distribution.
-
-![Distribution-shift robustness](results/shift_robustness.png)
-
-| Perturbation | MLP | CNN |
-|---|---|---|
-| Clean | 98.31% | 99.23% |
-| Rotate 15° | 95.46% | 98.10% |
-| Rotate 30° | 80.76% | 90.14% |
-| Translate 4px | **9.42%** | **21.24%** |
-| Noise σ=0.1 | 90.33% | 99.23% |
-| Noise σ=0.3 | 41.68% | 78.50% |
-
-These are plain accuracies (correct ÷ total), so "Clean" is slightly above the balanced test accuracy in the results table. The noise is seeded, so `python scripts/shift_robustness.py` regenerates this exact table and plot from the committed checkpoints.
-
-The CNN degrades more gracefully than the MLP under every perturbation, most dramatically for noise (σ=0.3: 78.50% vs. 41.68%). But the translation result is the important one to interpret carefully: a 4-pixel shift collapses the MLP to *chance level* (9.4%, vs. 10% expected from random guessing across 10 balanced classes), and the CNN — while clearly better — still falls to 21.2%, nowhere near usable. **This is not evidence that CNNs are translation-invariant and MLPs aren't** — a plain CNN's translation robustness comes only from local pooling within its conv layers; the flatten+FC head at the end has the same fixed-position assumption as the MLP does everywhere. Neither model was ever trained on shifted examples, so neither can be expected to handle a transformation it never saw — which is what the next section tests.
-
-## Fixing the weakness: data augmentation
-
-Both winning configurations were retrained with **training-data augmentation** and nothing else changed (`configs/augmented.yaml`, `configs/cnn_augmented.yaml`): every time a training image is loaded it is randomly shifted by up to 4 px per axis and rotated by up to 15°. Validation and test images are never augmented, so the models are scored on exactly the same images as before. Trained on a Kaggle T4 GPU (`notebooks/kaggle_run_executed_augmentation.ipynb`); the test set was evaluated once per new model.
-
-**Accuracy on normal digits is unchanged** — both differences are within the cross-seed spread measured above:
-
-| | Validation accuracy (balanced) | Test accuracy (balanced) |
-|---|---|---|
-| MLP → MLP augmented | 98.12% → 98.15% | 98.30% → 98.21% |
-| CNN → CNN augmented | 99.22% → 99.22% | 99.21% → **99.25%** |
-
-**The shift weakness is fixed, and the robustness extends beyond what was trained.** A 4-pixel shift now costs the CNN under one point (21.2% → 98.3%) and the MLP about three (9.4% → 94.9%). At 5 px, never seen in training, they still score 92.1% and 76.5%, fading back to chance by 8 px. The CNN holds up further than the MLP:
-
-![Accuracy vs shift for original and augmented models](results/translation_curve.png)
-
-**But it's a trade-off, not a free win.** Re-running the full robustness suite shows rotation also improved (30° was never trained: CNN 90.1% → 93.5%), while robustness to **noise got much worse**:
-
-![Distribution-shift robustness, original vs augmented](results/augmentation_shift_robustness.png)
-
-| Perturbation | MLP | MLP augmented | CNN | CNN augmented |
-|---|---|---|---|---|
-| Clean | 98.31% | 98.21% | 99.23% | 99.25% |
-| Rotate 15° | 95.46% | 96.92% | 98.10% | 98.39% |
-| Rotate 30° | 80.76% | 88.57% | 90.14% | 93.54% |
-| Translate 4px | 9.42% | **94.89%** | 21.24% | **98.29%** |
-| Noise σ=0.1 | 90.33% | 70.90% | 99.23% | 91.05% |
-| Noise σ=0.3 | 41.68% | **15.25%** | 78.50% | **13.39%** |
-
-Under heavy noise the augmented models answer "8" for almost every image (96% of the CNN's predictions): noise lights up about 47% of the pixels instead of 17%, which reads as "a lot of ink". Part of the cause can be shown directly by adding noise only outside the central 20×20 box, where MNIST digits never reach, or only inside it:
-
-| Noise σ=0.3 | everywhere | border only | centre only |
-|---|---|---|---|
-| CNN → CNN augmented | 78.5% → 13.4% | 99.0% → 86.4% | 82.4% → 31.4% |
-| MLP → MLP augmented | 41.7% → 15.2% | 82.2% → 44.2% | 60.1% → 49.2% |
-
-The original CNN almost completely ignores the border (border-only noise leaves it at 99.0%, vs. 99.2% clean): on centred digits the border is always empty, so it never had to look there. Augmentation moved digits towards the edges, so the augmented models learned that border pixels matter, and noise there now counts. That explains part of the drop. The augmented models are also clearly worse with noise only over the digit itself, which this experiment doesn't explain.
-
-So augmentation targeted one weakness and exposed another; the lesson is to re-run the whole robustness suite after any change, not just the metric being fixed. The CLI and web demo keep using the original CNN: `predict.py` already centres real-world images, which addresses the shift problem at prediction time, and the original stays more robust to noise. Every number and figure in this section is regenerated by `python scripts/shift_robustness.py` and pinned by regression tests.
-
-## Suggestions for further improvement
-
-- **Noise augmentation** — the natural next step from the section above: add random Gaussian noise to training images (alongside shift and rotation) and check whether noise robustness recovers without losing the shift gains.
-- **Wider/longer search**, especially for the CNN — 20 trials over a moderately-sized space is a reasonable first pass, not an exhaustive one. The CNN search only varied 2-layer channel widths; depth (3+ conv blocks) wasn't explored. Searching with augmentation on (not just retraining the existing winners) might also find settings better suited to it.
-- **Weight initialization / BatchNorm.** Not explored here (both architectures are shallow enough that vanishing/exploding gradients weren't a practical issue), but worth an ablation on a deeper CNN.
-- **Transfer learning** (e.g. a small ImageNet-pretrained backbone, fine-tuned) — unlikely to help much on MNIST specifically (it's simple enough that training from scratch is standard and already near-ceiling), but would be the natural next thing to try on a harder image dataset.
-
-## Project structure, reproducing this project
-
-See [REPORT.md](REPORT.md) for the full write-up: every design decision, experiment, and result, plus the Kaggle-Notebooks-specific setup. In short:
-- `src/` — the pipeline (data module, model, train/search/evaluate entry points), runnable locally or on Kaggle, for either architecture.
-- `configs/baseline.yaml` / `configs/best_from_search.yaml` — the MLP configs behind the results above.
-- `configs/cnn_baseline.yaml` / `configs/cnn_best_from_search.yaml` — the CNN configs.
-- `configs/augmented.yaml` / `configs/cnn_augmented.yaml` — the winning configs plus data augmentation; checkpoints in `results/augmented.ckpt` / `results/cnn_augmented.ckpt`.
-- `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the Kaggle GPU runs (baseline, search, retrain, test evaluation) with their outputs intact; `notebooks/kaggle_run_executed_robustness.ipynb` — the cross-seed trials. To rerun one, upload it to Kaggle and *Run all* (outputs are overwritten). `notebooks/exploration.ipynb` — the EDA.
-- `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
-- `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
+- `src/` — the pipeline: data module, models, `train` / `search` / `evaluate`, `robustness` evaluations and `predict` (preprocessing and prediction for arbitrary images).
+- `configs/` — `baseline` / `best_from_search` / `augmented` for the MLP, the same three with a `cnn_` prefix for the CNN.
+- `results/` — the four checkpoints (original and augmented MLP and CNN) and every figure.
+- `notebooks/` — the executed Kaggle GPU runs, outputs intact (training and search, cross-seed trials, augmentation) and the EDA. To rerun one, upload it to Kaggle and *Run all*.
+- `scripts/` — `shift_robustness.py` (regenerates the robustness results) and `publish_kaggle_dataset.py` (syncs `src/` and `configs/` to Kaggle for the notebooks).
 - `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.
-- `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
-- `scripts/shift_robustness.py` — regenerates every distribution-shift table and figure (original and augmented models, translation curve, noise-location check) from the committed checkpoints (needs the real data).
-- `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
+- `tests/` — the pytest suite; `tests/test_regression.py` pins the published numbers.
 
 ## License
 
