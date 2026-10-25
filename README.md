@@ -1,8 +1,10 @@
-# MNIST Digit Classification — MLP, and a CNN Comparison
+# MNIST: MLP vs CNN — Tuning, Seed Variance and Robustness Under Distribution Shift
 
 [![CI](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/ivannamor/mnist-digit-classification/actions/workflows/ci.yml)
 
-A PyTorch Lightning pipeline for the Kaggle "Digit Recognizer" (MNIST) dataset, built for the Deep Learning Fundamentals project. Covers data cleaning, a stratified train/val/test split, a configurable MLP architecture, a systematic hyperparameter search, and a final held-out test evaluation. The required deliverable is the MLP; a CNN was added afterward as a stretch-goal comparison, built and searched the same rigorous way.
+An end-to-end PyTorch Lightning project on the Kaggle "Digit Recognizer" (MNIST) data, built around evaluation you can trust: a test set touched exactly once, results that hold across 5 random seeds, robustness tests that show where both models break (a 4-pixel shift), and a prediction pipeline that compensates for it on real-world images. The tuned CNN reaches 99.2% test accuracy. The headline results, the robustness table and the prediction numbers are reproducible from the committed checkpoints and pinned by regression tests.
+
+Started as the Deep Learning Fundamentals project at Turing College, where the required deliverable was the MLP; the CNN comparison, robustness checks, tests and demo were added beyond the brief.
 
 ![Web demo: drawing digits and getting the CNN's live top-3 prediction](docs/demo.gif)
 
