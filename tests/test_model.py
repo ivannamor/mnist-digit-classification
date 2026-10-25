@@ -118,6 +118,8 @@ def test_checkpoint_round_trip(architecture, data_config, tmp_path):
     [
         ("configs/best_from_search.yaml", "results/mlp_best_from_search.ckpt"),
         ("configs/cnn_best_from_search.yaml", "results/cnn_best_from_search.ckpt"),
+        ("configs/augmented.yaml", "results/augmented.ckpt"),
+        ("configs/cnn_augmented.yaml", "results/cnn_augmented.ckpt"),
     ],
 )
 def test_committed_checkpoint_matches_its_config(config_path, ckpt_path):
