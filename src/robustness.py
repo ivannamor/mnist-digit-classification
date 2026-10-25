@@ -101,3 +101,42 @@ def run_shift_robustness(model: BaseClassifier, dataloader: DataLoader, seed: in
             torch.manual_seed(seed)
             results[name] = _accuracy_under(model, dataloader, perturbation)
     return results
+
+
+def run_translation_curve(model: BaseClassifier, dataloader: DataLoader, max_shift_px: int = 8) -> dict[int, float]:
+    """Accuracy with every test image shifted right and down by 0..max_shift_px
+    pixels (the same diagonal shift as the table's translate_4px). Shifts beyond
+    the training augmentation range show how far learned robustness extends.
+    Deterministic: no randomness involved.
+    """
+    with torch.random.fork_rng(devices=[]):
+        return {
+            shift: _accuracy_under(
+                model,
+                dataloader,
+                lambda x, s=shift: TF.affine(x, angle=0.0, translate=[s, s], scale=1.0, shear=0.0),
+            )
+            for shift in range(max_shift_px + 1)
+        }
+
+
+def run_noise_location_check(
+    model: BaseClassifier, dataloader: DataLoader, sigma: float = 0.3, seed: int = 0
+) -> dict[str, float]:
+    """Accuracy with Gaussian noise added everywhere, only outside the central
+    20x20 box (where MNIST digits never reach), or only inside it. Separates
+    sensitivity to noise on the empty border from noise over the digit itself.
+    """
+    center = torch.zeros(1, 28, 28, dtype=torch.bool)
+    center[:, 4:24, 4:24] = True
+    regions = {"everywhere": torch.ones_like(center), "border_only": ~center, "center_only": center}
+
+    def noise_in(mask: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:
+        return lambda x: torch.where(mask, (x + torch.randn_like(x) * sigma).clamp(0.0, 1.0), x)
+
+    results = {}
+    with torch.random.fork_rng(devices=[]):
+        for name, mask in regions.items():
+            torch.manual_seed(seed)
+            results[name] = _accuracy_under(model, dataloader, noise_in(mask))
+    return results

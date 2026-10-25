@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.data_module import MNISTDataModule, _load_and_clean, _load_clean_and_split
+from src.config import DataConfig
+from src.data_module import MNISTDataModule, _load_and_clean, _load_clean_and_split, build_train_transform
 from tests.conftest import NUM_CLASSES, ROWS_PER_CLASS, make_mnist_frame
 
 
@@ -122,3 +123,50 @@ def test_prepare_data_skips_download_when_csv_exists(data_config, monkeypatch):
     # so this fails loudly if prepare_data reaches the download branch.
     monkeypatch.setitem(sys.modules, "kaggle", None)
     MNISTDataModule(data_config).prepare_data()
+
+
+# --- Augmentation -----------------------------------------------------------
+
+
+def _augmented(config):
+    return replace(config, augment_max_shift_px=4, augment_max_rotation_deg=15)
+
+
+def test_no_augmentation_by_default(data_config):
+    """Existing configs and checkpoints must behave exactly as before."""
+    dm = _setup(data_config)
+    assert dm.train_dataset.transform is None
+    torch.testing.assert_close(dm.train_dataset[0][0], dm.train_dataset[0][0])
+
+
+def test_augmentation_alters_training_images_on_every_load(data_config):
+    dm = _setup(_augmented(data_config))
+    torch.manual_seed(0)
+    loads = [dm.train_dataset[0][0] for _ in range(5)]
+    assert any(not torch.equal(loads[0], other) for other in loads[1:])
+    for image in loads:
+        assert image.shape == (1, 28, 28)
+        assert 0.0 <= image.min() and image.max() <= 1.0
+    assert dm.train_dataset[0][1] == dm.train_dataset[0][1], "the label must never change"
+
+
+def test_augmentation_never_touches_val_or_test(data_config):
+    """Val/test stay clean, so augmented and original models are scored on identical images."""
+    plain, augmented = _setup(data_config), _setup(_augmented(data_config))
+    for split in ("val_dataset", "test_dataset"):
+        for idx in range(3):
+            torch.testing.assert_close(getattr(augmented, split)[idx][0], getattr(plain, split)[idx][0])
+        assert getattr(augmented, split).transform is None
+
+
+def test_shift_stays_within_configured_pixels():
+    transform = build_train_transform(DataConfig(augment_max_shift_px=4))
+    image = torch.zeros(1, 28, 28)
+    image[0, 14, 14] = 1.0
+    torch.manual_seed(0)
+    shifts = set()
+    for _ in range(500):
+        row, col = divmod(int(transform(image).flatten().argmax()), 28)
+        shifts.add((row - 14, col - 14))
+    assert max(max(abs(dy), abs(dx)) for dy, dx in shifts) == 4  # reaches the limit...
+    assert all(abs(dy) <= 4 and abs(dx) <= 4 for dy, dx in shifts)  # ...and never exceeds it

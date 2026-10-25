@@ -117,8 +117,8 @@ It's a small [Gradio](https://www.gradio.app/) app around the same `predict` fun
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                       # full suite, ~1 min on CPU with the real data
-pytest -m "not regression"   # skip the real-data checks, ~30s
+pytest -m "not regression"   # everyday check: no real data needed, ~1 min on CPU
+pytest                       # full suite incl. real-data regression tests, ~7 min on CPU
 ```
 
 The suite runs offline on a small synthetic dataset in Kaggle's CSV format, so it needs no data download or GPU. It covers data cleaning, train/val/test disjointness and stratification, model shapes, checkpoint save/load, every config file and search-space choice, image preprocessing for prediction, and a short training run through each entry point. Extra regression tests evaluate the committed checkpoints on the real data, checking they reproduce the results table above exactly and still recognise photo-like images through `predict`; they run only when `data/train.csv` is present and are skipped otherwise.
@@ -192,12 +192,51 @@ The already-trained models (no retraining) were evaluated on perturbed versions 
 
 These are plain accuracies (correct ÷ total), so "Clean" is slightly above the balanced test accuracy in the results table. The noise is seeded, so `python scripts/shift_robustness.py` regenerates this exact table and plot from the committed checkpoints.
 
-The CNN degrades more gracefully than the MLP under every perturbation, most dramatically for noise (σ=0.3: 78.50% vs. 41.68%). But the translation result is the important one to interpret carefully: a 4-pixel shift collapses the MLP to *chance level* (9.4%, vs. 10% expected from random guessing across 10 balanced classes), and the CNN — while clearly better — still falls to 21.2%, nowhere near usable. **This is not evidence that CNNs are translation-invariant and MLPs aren't** — a plain CNN's translation robustness comes only from local pooling within its conv layers; the flatten+FC head at the end has the same fixed-position assumption as the MLP does everywhere. Neither model was ever trained on shifted examples, so neither can be expected to handle a transformation it never saw — this is direct empirical support for the data-augmentation suggestion below, not a property either architecture gets for free.
+The CNN degrades more gracefully than the MLP under every perturbation, most dramatically for noise (σ=0.3: 78.50% vs. 41.68%). But the translation result is the important one to interpret carefully: a 4-pixel shift collapses the MLP to *chance level* (9.4%, vs. 10% expected from random guessing across 10 balanced classes), and the CNN — while clearly better — still falls to 21.2%, nowhere near usable. **This is not evidence that CNNs are translation-invariant and MLPs aren't** — a plain CNN's translation robustness comes only from local pooling within its conv layers; the flatten+FC head at the end has the same fixed-position assumption as the MLP does everywhere. Neither model was ever trained on shifted examples, so neither can be expected to handle a transformation it never saw — which is what the next section tests.
+
+## Fixing the weakness: data augmentation
+
+Both winning configurations were retrained with **training-data augmentation** and nothing else changed (`configs/augmented.yaml`, `configs/cnn_augmented.yaml`): every time a training image is loaded it is randomly shifted by up to 4 px per axis and rotated by up to 15°. Validation and test images are never augmented, so the models are scored on exactly the same images as before. Trained on a Kaggle T4 GPU (`notebooks/kaggle_run_executed_augmentation.ipynb`); the test set was evaluated once per new model.
+
+**Accuracy on normal digits is unchanged** — both differences are within the cross-seed spread measured above:
+
+| | Validation accuracy (balanced) | Test accuracy (balanced) |
+|---|---|---|
+| MLP → MLP augmented | 98.12% → 98.15% | 98.30% → 98.21% |
+| CNN → CNN augmented | 99.22% → 99.22% | 99.21% → **99.25%** |
+
+**The shift weakness is fixed, and the robustness extends beyond what was trained.** A 4-pixel shift now costs the CNN under one point (21.2% → 98.3%) and the MLP about three (9.4% → 94.9%). At 5 px, never seen in training, they still score 92.1% and 76.5%, fading back to chance by 8 px. The CNN holds up further than the MLP:
+
+![Accuracy vs shift for original and augmented models](results/translation_curve.png)
+
+**But it's a trade-off, not a free win.** Re-running the full robustness suite shows rotation also improved (30° was never trained: CNN 90.1% → 93.5%), while robustness to **noise got much worse**:
+
+![Distribution-shift robustness, original vs augmented](results/augmentation_shift_robustness.png)
+
+| Perturbation | MLP | MLP augmented | CNN | CNN augmented |
+|---|---|---|---|---|
+| Clean | 98.31% | 98.21% | 99.23% | 99.25% |
+| Rotate 15° | 95.46% | 96.92% | 98.10% | 98.39% |
+| Rotate 30° | 80.76% | 88.57% | 90.14% | 93.54% |
+| Translate 4px | 9.42% | **94.89%** | 21.24% | **98.29%** |
+| Noise σ=0.1 | 90.33% | 70.90% | 99.23% | 91.05% |
+| Noise σ=0.3 | 41.68% | **15.25%** | 78.50% | **13.39%** |
+
+Under heavy noise the augmented models answer "8" for almost every image (96% of the CNN's predictions): noise lights up about 47% of the pixels instead of 17%, which reads as "a lot of ink". Part of the cause can be shown directly by adding noise only outside the central 20×20 box, where MNIST digits never reach, or only inside it:
+
+| Noise σ=0.3 | everywhere | border only | centre only |
+|---|---|---|---|
+| CNN → CNN augmented | 78.5% → 13.4% | 99.0% → 86.4% | 82.4% → 31.4% |
+| MLP → MLP augmented | 41.7% → 15.2% | 82.2% → 44.2% | 60.1% → 49.2% |
+
+The original CNN almost completely ignores the border (border-only noise leaves it at 99.0%, vs. 99.2% clean): on centred digits the border is always empty, so it never had to look there. Augmentation moved digits towards the edges, so the augmented models learned that border pixels matter, and noise there now counts. That explains part of the drop. The augmented models are also clearly worse with noise only over the digit itself, which this experiment doesn't explain.
+
+So augmentation targeted one weakness and exposed another; the lesson is to re-run the whole robustness suite after any change, not just the metric being fixed. The CLI and web demo keep using the original CNN: `predict.py` already centres real-world images, which addresses the shift problem at prediction time, and the original stays more robust to noise. Every number and figure in this section is regenerated by `python scripts/shift_robustness.py` and pinned by regression tests.
 
 ## Suggestions for further improvement
 
-- **Wider/longer search**, especially for the CNN — 20 trials over a moderately-sized space is a reasonable first pass, not an exhaustive one. The CNN search only varied 2-layer channel widths; depth (3+ conv blocks) wasn't explored.
-- **Data augmentation** (small rotations/shifts/translations) — no longer just a theoretical suggestion: the robustness check above shows both models collapse under a 4px translation (MLP to chance level, CNN to 21%) since neither was ever trained on shifted examples. Augmentation during training is the direct fix, and the CNN in particular should benefit most, since translation/rotation invariance is exactly what convolution + augmentation reinforces together.
+- **Noise augmentation** — the natural next step from the section above: add random Gaussian noise to training images (alongside shift and rotation) and check whether noise robustness recovers without losing the shift gains.
+- **Wider/longer search**, especially for the CNN — 20 trials over a moderately-sized space is a reasonable first pass, not an exhaustive one. The CNN search only varied 2-layer channel widths; depth (3+ conv blocks) wasn't explored. Searching with augmentation on (not just retraining the existing winners) might also find settings better suited to it.
 - **Weight initialization / BatchNorm.** Not explored here (both architectures are shallow enough that vanishing/exploding gradients weren't a practical issue), but worth an ablation on a deeper CNN.
 - **Transfer learning** (e.g. a small ImageNet-pretrained backbone, fine-tuned) — unlikely to help much on MNIST specifically (it's simple enough that training from scratch is standard and already near-ceiling), but would be the natural next thing to try on a harder image dataset.
 
@@ -207,12 +246,13 @@ See [REPORT.md](REPORT.md) for the full write-up: every design decision, experim
 - `src/` — the pipeline (data module, model, train/search/evaluate entry points), runnable locally or on Kaggle, for either architecture.
 - `configs/baseline.yaml` / `configs/best_from_search.yaml` — the MLP configs behind the results above.
 - `configs/cnn_baseline.yaml` / `configs/cnn_best_from_search.yaml` — the CNN configs.
+- `configs/augmented.yaml` / `configs/cnn_augmented.yaml` — the winning configs plus data augmentation; checkpoints in `results/augmented.ckpt` / `results/cnn_augmented.ckpt`.
 - `notebooks/kaggle_run_executed.ipynb` / `kaggle_run_executed_cnn.ipynb` — the Kaggle GPU runs (baseline, search, retrain, test evaluation) with their outputs intact; `notebooks/kaggle_run_executed_robustness.ipynb` — the cross-seed trials. To rerun one, upload it to Kaggle and *Run all* (outputs are overwritten). `notebooks/exploration.ipynb` — the EDA.
 - `src/robustness.py` — cross-seed trials and distribution-shift evaluation (`run_cross_seed_trials`, `run_shift_robustness`).
 - `src/predict.py` — MNIST-style preprocessing and prediction for arbitrary images (`preprocess`, `predict`).
 - `app.py` — the Gradio web demo; `docs/demo.gif` is a recording of it.
 - `scripts/publish_kaggle_dataset.py` — syncs `src/`/`configs/` to Kaggle, since Kaggle Notebooks have no direct access to this local filesystem.
-- `scripts/shift_robustness.py` — regenerates the distribution-shift table and `results/shift_robustness.png` from the committed checkpoints (needs the real data).
+- `scripts/shift_robustness.py` — regenerates every distribution-shift table and figure (original and augmented models, translation curve, noise-location check) from the committed checkpoints (needs the real data).
 - `tests/` — pytest suite (see *Run the tests* above); `tests/conftest.py` builds the synthetic dataset, `tests/test_regression.py` is the real-data check against the results table.
 
 ## License

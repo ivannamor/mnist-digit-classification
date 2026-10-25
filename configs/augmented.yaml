@@ -1,0 +1,35 @@
+# The winning MLP configuration (best_from_search.yaml) with training-data augmentation
+# added and nothing else changed: every training image is randomly shifted
+# by up to 4 px per axis and rotated by up to 15 degrees. Targets the
+# distribution-shift weakness (a 4 px shift breaks the original models).
+data:
+  data_dir: data
+  train_csv: train.csv
+  val_fraction: 0.2
+  test_fraction: 0.2
+  batch_size: 128
+  num_workers: 2
+  split_seed: 42
+  augment_max_shift_px: 4
+  augment_max_rotation_deg: 15
+
+model:
+  hidden_dims: [512, 256]
+  activation: gelu
+  dropout: 0.258885920517189
+  num_classes: 10
+
+optim:
+  optimizer: adamw
+  lr: 0.0009157770842261716
+  weight_decay: 0.00043489682497903484
+  label_smoothing: 0.1
+  lr_scheduler: null
+
+trainer:
+  max_epochs: 30
+  accelerator: auto
+  devices: 1
+  patience: 5
+  experiment_name: augmented
+  training_seed: 42

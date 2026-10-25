@@ -18,6 +18,12 @@ class DataConfig:
     # trials so every trial is evaluated on the same held-out test set --
     # see TrainerConfig.training_seed for the model-init/shuffling seed.
     split_seed: int = 42
+    # Data augmentation, applied to training images only (val/test stay
+    # untouched so results remain comparable): every time an image is loaded
+    # it is shifted by up to this many pixels per axis and rotated by up to
+    # this many degrees, at random. 0 = off, the default.
+    augment_max_shift_px: int = 0
+    augment_max_rotation_deg: float = 0.0
 
 
 @dataclass

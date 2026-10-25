@@ -16,7 +16,13 @@ from src.config import CNNModelConfig, DataConfig, ExperimentConfig, ModelConfig
 from src.data_module import MNISTDataModule
 from src.evaluate import evaluate
 from src.model import build_model
-from src.robustness import _PERTURBATIONS, run_cross_seed_trials, run_shift_robustness
+from src.robustness import (
+    _PERTURBATIONS,
+    run_cross_seed_trials,
+    run_noise_location_check,
+    run_shift_robustness,
+    run_translation_curve,
+)
 from src.search import create_study, objective
 from src.train import train
 from tests.test_configs import _valid_params
@@ -236,3 +242,45 @@ def test_cross_seed_trials_one_result_per_seed(data_config, tmp_path, monkeypatc
         assert 0.0 <= r["val_accuracy"] <= 1.0
         assert 0.0 <= r["test_accuracy"] <= 1.0
     assert not list(tmp_path.rglob("*.ckpt")), "docstring promises no checkpoints are saved"
+
+
+def test_translation_curve_matches_the_shift_table(data_config):
+    """Shift 0 is the clean score and shift 4 is the table's translate_4px row: one definition of "shift"."""
+    data_module = MNISTDataModule(data_config)
+    data_module.setup()
+    model = _PixelSumClassifier()
+    curve = run_translation_curve(model, data_module.test_dataloader(), max_shift_px=6)
+    table = run_shift_robustness(model, data_module.test_dataloader())
+
+    assert list(curve) == list(range(7))
+    assert curve[0] == table["clean"]
+    assert curve[4] == table["translate_4px"]
+
+
+class _CenterOnlyClassifier(torch.nn.Module):
+    """Stand-in that only looks inside the central 20x20 box, like a model
+    trained on always-centred digits that has learned to ignore the border."""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        digit = (x[:, :, 4:24, 4:24].sum(dim=(1, 2, 3)) * 1000).long() % 10
+        return torch.nn.functional.one_hot(digit, num_classes=10).float()
+
+
+def test_noise_location_check_separates_border_from_center(data_config):
+    data_module = MNISTDataModule(data_config)
+    data_module.setup()
+    model = _CenterOnlyClassifier()
+    clean = run_shift_robustness(model, data_module.test_dataloader())["clean"]
+
+    torch.manual_seed(1)
+    first = run_noise_location_check(model, data_module.test_dataloader())
+    after_first = torch.rand(3)
+    torch.manual_seed(2)
+    second = run_noise_location_check(model, data_module.test_dataloader())
+    torch.manual_seed(1)
+
+    assert set(first) == {"everywhere", "border_only", "center_only"}
+    assert first["border_only"] == clean, "noise outside the 20x20 box must not reach a center-only model"
+    assert first["center_only"] != clean
+    assert first == second, "must be reproducible whatever the caller's seed"
+    assert torch.equal(after_first, torch.rand(3)), "must not consume the caller's RNG"

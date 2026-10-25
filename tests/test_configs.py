@@ -127,6 +127,16 @@ def test_build_config_keeps_base_settings_and_applies_batch_size():
     assert config.trainer.max_epochs == 7
 
 
+def test_build_config_keeps_augmentation_from_base():
+    """Searching an augmented config must keep augmenting every trial."""
+    base = _base("mlp")
+    base.data.augment_max_shift_px = 4
+    base.data.augment_max_rotation_deg = 15
+    config = build_config(_sample("mlp", _valid_params("mlp")), base)
+    assert config.data.augment_max_shift_px == 4
+    assert config.data.augment_max_rotation_deg == 15
+
+
 def _to_search_params(config: ExperimentConfig) -> dict:
     """Inverse of build_config: express a config as raw search-space values."""
     model, optim = config.model, config.optim
