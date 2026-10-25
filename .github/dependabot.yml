@@ -12,6 +12,12 @@ updates:
         patterns: ["torch", "torchvision"]
       dev-tools:
         patterns: ["ruff", "pytest", "nbformat", "nbconvert", "ipykernel"]
+    ignore:
+      # Gradio 6.30 (requirements-demo.txt) requires pillow<13, so every Pillow 13
+      # bump fails CI. Remove this once a Gradio release allows Pillow 13 (check
+      # its requirements when Dependabot proposes a Gradio update).
+      - dependency-name: "pillow"
+        versions: [">=13"]
 
   # Versions of the actions used in .github/workflows (checkout, setup-python)
   - package-ecosystem: github-actions
