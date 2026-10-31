@@ -1,7 +1,7 @@
 # Pinned to the versions that passed the full test suite and reproduced the
 # README results exactly. Dependabot opens PRs to update them (tested by CI).
-torch==2.14.1
-torchvision==0.29.1
+torch==2.15.0
+torchvision==0.29.2
 pytorch-lightning==2.6.6
 torchmetrics==1.9.0
 optuna==5.0.0
